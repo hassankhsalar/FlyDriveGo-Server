@@ -30,6 +30,19 @@ async function run() {
     ///API code Goes here//////
 
 
+    const allProductsCollection = client.db('FlyDriveGo').collection('ProductsCollection');
+
+
+
+    //===========--------- SEllER APIS ------------===============
+
+    // Add product apis
+    app.post('/addProducts', async (req, res) => {
+      const productsData = req.body;
+      console.log("Received product data:", productsData); 
+      const result = await allProductsCollection.insertOne(productsData);
+      res.status(201).send(result);
+  });
 
 
 
