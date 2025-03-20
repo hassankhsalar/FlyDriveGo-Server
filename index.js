@@ -9,7 +9,8 @@ app.use(cors());
 app.use(express.json());
 /////////////////////////////
 
-const { MongoClient, ServerApiVersion, ObjectId } = require("mongodb");
+
+const { MongoClient, ServerApiVersion, ObjectId } = require('mongodb');
 const uri = `mongodb+srv://${process.env.DB_USER}:${process.env.DB_PASS}@cluster0.c9iiq.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0`;
 
 // Create a MongoClient with a MongoClientOptions object to set the Stable API version
@@ -117,6 +118,38 @@ async function run() {
       res.status(201).send(result);
     });
 
+    // Get Product By Email
+    app.get('/sellerProduct/:email', async (req, res) => {
+      const email = req.params.email
+      const query = {sellerEmail:email };
+      const result = await allProductsCollection.find(query).toArray();
+      res.send(result)
+    });
+
+    // Update Products 
+    app.put("/updateProduct/:id", async (req, res) => {
+      const id = req.params.id;
+      const updatedData = req.body;
+      const result = await allProductsCollection.updateOne({ _id: new ObjectId(id) }, { $set: updatedData });
+      res.send(result);
+  });
+  
+  
+
+    // Delete Product 
+    app.delete('/deleteProduct/:id', async (req, res) => {
+      const id = req.params.id;
+      const query = { _id: new ObjectId(id) }
+      const result = await allProductsCollection.deleteOne(query);
+      res.send(result)
+  })
+
+    
+    
+
+
+
+
     ///API Code Above////
 
     // Send a ping to confirm a successful connection
@@ -132,10 +165,10 @@ async function run() {
 run().catch(console.dir);
 
 ////////////////////////////
-app.get("/", (req, res) => {
-  res.send("tour is waiting");
-});
+app.get('/', (req, res) => {
+  res.send('tour is waiting')
+})
 
 app.listen(port, () => {
   console.log(`plane is waiting at ${port}`);
-});
+})
