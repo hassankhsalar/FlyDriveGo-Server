@@ -1,7 +1,7 @@
-const express = require('express');
+const express = require("express");
 const app = express();
-const cors = require('cors');
-require('dotenv').config();
+const cors = require("cors");
+require("dotenv").config();
 const port = process.env.PORT || 5000;
 
 //middleware
@@ -19,7 +19,7 @@ const client = new MongoClient(uri, {
     version: ServerApiVersion.v1,
     strict: true,
     deprecationErrors: true,
-  }
+  },
 });
 
 async function run() {
@@ -29,15 +29,89 @@ async function run() {
 
     ///API code Goes here//////
 
+    const allProductsCollection = client
+      .db("FlyDriveGo")
+      .collection("ProductsCollection");
+    const userCollection = client.db("FlyDriveGo").collection("users");
+    const tourPackCollection = client
+      .db("FlyDriveGo")
+      .collection("TourPackage");
 
-    const allProductsCollection = client.db('FlyDriveGo').collection('ProductsCollection');
+    // ===== User Api ======///////
 
+    app.post("/users", async (req, res) => {
+      const user = req.body;
+      const query = { email: user.email };
+      const existingUser = await userCollection.findOne(query);
+      if (existingUser) {
+        return res.send({ message: "user already exists", insertedId: null });
+      }
+      const result = await userCollection.insertOne(user);
+      res.send(result);
+    });
 
+    app.get("/users", async (req, res) => {
+      const email = req.query.email;
+      if (!email) {
+        return res.status(400).send({ message: "Email is Needed" });
+      }
+      const filter = { email };
+      const result = await userCollection.find(filter).toArray();
+      res.send(result);
+    });
+
+    // Moderator: make seller
+    app.patch("/users/moderator/:id", async (req, res) => {
+      const id = req.params.id;
+      const filter = { _id: new ObjectId(id) };
+      const updatedDoc = {
+        $set: {
+          role: "seller",
+        },
+      };
+      const result = await userCollection.updateOne(filter, updatedDoc);
+      res.send(result);
+    });
+
+    // user delete
+    app.delete("/users/:id", async (req, res) => {
+      const id = req.params.id;
+      const query = { _id: new ObjectId(id) };
+      const result = await userCollection.deleteOne(query);
+      res.send(result);
+    });
+
+    // Tour Package Related api//
+    app.post("/tourPackage", async (req, res) => {
+      const data = req.body;
+      const result = await tourPackCollection.insertOne(data);
+      res.send(result);
+    });
+
+    app.patch("/tourPackage/:id", async (req, res) => {
+      const { title } = req.body;
+      const id = req.params.id;
+      const filter = { _id: new ObjectId(id) };
+      const updatedDoc = {
+        $set: {
+          title: title,
+        },
+      };
+      const result = await tourPackCollection.updateOne(filter, updatedDoc);
+      res.send(result);
+    });
+
+    app.delete("/tourPackage/:id", async (req, res) => {
+      const id = req.params.id;
+      const query = { _id: new ObjectId(id) };
+      const result = await tourPackCollection.deleteOne(query);
+      res.send(result);
+    });
 
     //===========--------- SEllER APIS ------------===============
 
     // Add product apis
-    app.post('/addProducts', async (req, res) => {
+    app.post("/addProducts", async (req, res) => {
       const productsData = req.body;
       console.log("Received product data:", productsData);
       const result = await allProductsCollection.insertOne(productsData);
@@ -80,14 +154,15 @@ async function run() {
 
     // Send a ping to confirm a successful connection
     await client.db("admin").command({ ping: 1 });
-    console.log("Pinged your deployment. You successfully connected to MongoDB!");
+    console.log(
+      "Pinged your deployment. You successfully connected to MongoDB!"
+    );
   } finally {
     // Ensures that the client will close when you finish/error
     //await client.close();
   }
 }
 run().catch(console.dir);
-
 
 ////////////////////////////
 app.get('/', (req, res) => {
