@@ -257,6 +257,23 @@ async function run() {
 
     //===========--------- SEllER APIS ------------===============
 
+    // Get All Api for Product
+    app.get("/products", async(req,res)=>{
+      const { search, tags, publisher } = req.query;
+      const filters = {};
+      if (search) {
+        filters.title = { $regex: search, $options: "i" };
+      }
+
+      if (tags) {
+        const tagsArray = Array.isArray(tags) ? tags : tags.split(",");
+        filters.tags = { $in: tagsArray };
+      }
+      const result = await allProductsCollection.find(filters).toArray();
+      res.send(result);
+    });
+
+
     // Add product apis
     app.post("/addProducts", async (req, res) => {
       const productsData = req.body;
@@ -296,10 +313,10 @@ async function run() {
     ///API Code Above////
 
     // Send a ping to confirm a successful connection
-    await client.db("admin").command({ ping: 1 });
-    console.log(
-      "Pinged your deployment. You successfully connected to MongoDB!"
-    );
+    // await client.db("admin").command({ ping: 1 });
+    // console.log(
+    //   "Pinged your deployment. You successfully connected to MongoDB!"
+    // );
   } finally {
     // Ensures that the client will close when you finish/error
     //await client.close();
