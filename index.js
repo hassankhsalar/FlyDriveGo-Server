@@ -2,12 +2,31 @@ const express = require("express");
 const app = express();
 const cors = require("cors");
 require("dotenv").config();
+const multer = require("multer");
+const axios = require("axios");
+const cloudinary = require("cloudinary").v2;
 const port = process.env.PORT || 5000;
 
 //middleware
 app.use(cors());
 app.use(express.json());
 /////////////////////////////
+
+
+// Configure Cloudinary
+cloudinary.config({
+  cloud_name: `${process.env.CLOUDINARY_CLOUD_NAME}`,
+  api_key: `${process.env.CLOUDINARY_API_KEY}`,
+  api_secret: `${process.env.CLOUDINARY_API_SECRET}`,
+});
+
+// Configure Multer for handling file uploads
+const storage = multer.memoryStorage();
+const upload = multer({
+  storage,
+  limits: { fileSize: 5 * 1024 * 1024 } // 5MB limit
+});
+
 
 const { MongoClient, ServerApiVersion, ObjectId } = require('mongodb');
 const uri = `mongodb+srv://${process.env.DB_USER}:${process.env.DB_PASS}@cluster0.c9iiq.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0`;
@@ -176,6 +195,319 @@ async function run() {
       }
     });
 
+    //=== VISA RELATED APIS ===//
+    //=== VISA RELATED APIS ===//
+    //=== VISA RELATED APIS ===//
+
+    // Upload a document to Cloudinary
+    app.post("/api/upload", upload.single("file"), async (req, res) => {
+      try {
+        if (!req.file) {
+          return res.status(400).json({ message: "No file uploaded" });
+        }
+        // Convert buffer to base64 data URL
+        const fileBuffer = req.file.buffer;
+        const fileType = req.file.mimetype;
+        const encodedFile = `data:${fileType};base64,${fileBuffer.toString('base64')}`;
+
+        // Upload to Cloudinary
+        const result = await cloudinary.uploader.upload(encodedFile, {
+          resource_type: "auto",
+          folder: "visa_documents",
+          public_id: `visa_doc_${Date.now()}`,
+          overwrite: true
+        });
+        res.status(200).json({
+          success: true,
+          url: result.secure_url,
+          public_id: result.public_id,
+          format: result.format,
+          original_filename: req.file.originalname
+        });
+      } catch (error) {
+        console.error("Error uploading to Cloudinary:", error);
+        res.status(500).json({
+          success: false,
+          message: "Failed to upload file",
+          error: error.message
+        });
+      }
+    });
+
+    // Upload multiple documents to Cloudinary
+    app.post("/api/uploads", upload.array("files", 10), async (req, res) => {
+      try {
+        if (!req.files || req.files.length === 0) {
+          return res.status(400).json({ message: "No files uploaded" });
+        }
+        // Process each file for upload to Cloudinary
+        const uploadPromises = req.files.map(async (file) => {
+          // Convert buffer to base64 data URL
+          const fileBuffer = file.buffer;
+          const fileType = file.mimetype;
+          const encodedFile = `data:${fileType};base64,${fileBuffer.toString('base64')}`;
+
+          // Upload to Cloudinary
+          const result = await cloudinary.uploader.upload(encodedFile, {
+            resource_type: "auto",
+            folder: "visa_documents",
+            public_id: `visa_doc_${Date.now()}_${Math.floor(Math.random() * 1000)}`,
+            overwrite: true
+          });
+          return {
+            success: true,
+            url: result.secure_url,
+            public_id: result.public_id,
+            format: result.format,
+            original_filename: file.originalname
+          };
+        });
+        // Wait for all uploads to complete
+        const uploadResults = await Promise.all(uploadPromises);
+        res.status(200).json({
+          success: true,
+          files: uploadResults
+        });
+      } catch (error) {
+        console.error("Error uploading multiple files:", error);
+        res.status(500).json({
+          success: false,
+          message: "Failed to upload files",
+          error: error.message
+        });
+      }
+    });
+
+    // == VISA APPLICATION ENDPOINTS == //
+    // == VISA APPLICATION ENDPOINTS == //
+    // == VISA APPLICATION ENDPOINTS == //
+
+    // visa applications collection
+    const visaApplicationsCollection = client.db("FlyDriveGo").collection("visaApplications");
+
+    // GET all visa applications 
+    app.get('/visa-applications', async (req, res) => {
+      try {
+        const { email } = req.query;
+        let query = {};
+        if (email) {
+          query = { userEmail: email };
+        }
+        const applications = await visaApplicationsCollection.find(query).toArray();
+        res.status(200).json(applications);
+      } catch (error) {
+        console.error("Error fetching visa applications:", error);
+        res.status(500).json({ message: "Internal Server Error" });
+      }
+    });
+
+    // GET a single visa application by ID
+    app.get('/visa-applications/:id', async (req, res) => {
+      try {
+        const id = req.params.id;
+        const application = await visaApplicationsCollection.findOne({ _id: new ObjectId(id) });
+        if (!application) {
+          return res.status(404).json({ message: "Application not found" });
+        }
+        res.status(200).json(application);
+      } catch (error) {
+        console.error("Error fetching visa application:", error);
+        res.status(500).json({ message: "Internal Server Error" });
+      }
+    });
+
+    // POST a new visa application
+    app.post('/visa-applications', async (req, res) => {
+      try {
+        const application = req.body;
+        if (!application.documents) {
+          application.documents = [];
+        }
+        application.createdAt = new Date();
+        application.updatedAt = new Date();
+        application.status = application.status || 'pending';
+        console.log("Creating new visa application:", {
+          fullName: application.fullName,
+          email: application.userEmail,
+          destination: application.countryName,
+          documents: application.documents.length
+        });
+        const result = await visaApplicationsCollection.insertOne(application);
+        res.status(201).json({
+          success: true,
+          _id: result.insertedId,
+          referenceNumber: application.referenceNumber
+        });
+      } catch (error) {
+        console.error("Error creating visa application:", error);
+        res.status(500).json({
+          success: false,
+          message: "Failed to create visa application",
+          error: error.message
+        });
+      }
+    });
+
+    // UPDATE visa application status
+    app.patch('/visa-applications/:id', async (req, res) => {
+      try {
+        const id = req.params.id;
+        const { status, adminNotes } = req.body;
+        const updateData = {
+          updatedAt: new Date()
+        };
+        if (status) {
+          updateData.status = status;
+        }
+        if (adminNotes) {
+          updateData.adminNotes = adminNotes;
+        }
+        const result = await visaApplicationsCollection.updateOne(
+          { _id: new ObjectId(id) },
+          { $set: updateData }
+        );
+        if (result.matchedCount === 0) {
+          return res.status(404).json({
+            success: false,
+            message: "Application not found"
+          });
+        }
+        res.status(200).json({
+          success: true,
+          message: "Application updated successfully"
+        });
+      } catch (error) {
+        console.error("Error updating visa application:", error);
+        res.status(500).json({
+          success: false,
+          message: "Failed to update visa application",
+          error: error.message
+        });
+      }
+    });
+
+    // POST a message to a visa application
+    app.post('/visa-applications/:id/messages', async (req, res) => {
+      try {
+        const id = req.params.id;
+        const { text, userId, userName } = req.body;
+        if (!text) {
+          return res.status(400).json({
+            success: false,
+            message: "Message text is required"
+          });
+        }
+        const messageData = {
+          text,
+          userId,
+          userName,
+          createdAt: new Date()
+        };
+        const result = await visaApplicationsCollection.updateOne(
+          { _id: new ObjectId(id) },
+          {
+            $push: { messages: messageData },
+            $set: { updatedAt: new Date() }
+          }
+        );
+        if (result.matchedCount === 0) {
+          return res.status(404).json({
+            success: false,
+            message: "Application not found"
+          });
+        }
+        res.status(200).json({
+          success: true,
+          message: "Message sent successfully",
+          messageData
+        });
+      } catch (error) {
+        console.error("Error sending message:", error);
+        res.status(500).json({
+          success: false,
+          message: "Failed to send message",
+          error: error.message
+        });
+      }
+    });
+
+    // Mark application as complete
+    app.patch('/visa-applications/:id/complete', async (req, res) => {
+      try {
+        const id = req.params.id;
+        const { approved, rejectionReason } = req.body;
+        const updateData = {
+          status: approved ? 'approved' : 'rejected',
+          updatedAt: new Date(),
+          completedAt: new Date()
+        };
+        if (!approved && rejectionReason) {
+          updateData.rejectionReason = rejectionReason;
+        }
+        const result = await visaApplicationsCollection.updateOne(
+          { _id: new ObjectId(id) },
+          { $set: updateData }
+        );
+        if (result.matchedCount === 0) {
+          return res.status(404).json({
+            success: false,
+            message: "Application not found"
+          });
+        }
+        res.status(200).json({
+          success: true,
+          message: `Application marked as ${approved ? 'approved' : 'rejected'}`
+        });
+      } catch (error) {
+        console.error("Error completing visa application:", error);
+        res.status(500).json({
+          success: false,
+          message: "Failed to complete visa application",
+          error: error.message
+        });
+      }
+    });
+
+    // Request additional information
+    app.patch('/visa-applications/:id/request-info', async (req, res) => {
+      try {
+        const id = req.params.id;
+        const { additionalInfoRequest } = req.body;
+        if (!additionalInfoRequest) {
+          return res.status(400).json({
+            success: false,
+            message: "Additional information request details are required"
+          });
+        }
+        const updateData = {
+          status: 'additional_info_needed',
+          additionalInfoRequest,
+          additionalInfoRequestDate: new Date(),
+          updatedAt: new Date()
+        };
+        const result = await visaApplicationsCollection.updateOne(
+          { _id: new ObjectId(id) },
+          { $set: updateData }
+        );
+        if (result.matchedCount === 0) {
+          return res.status(404).json({
+            success: false,
+            message: "Application not found"
+          });
+        }
+        res.status(200).json({
+          success: true,
+          message: "Additional information requested"
+        });
+      } catch (error) {
+        console.error("Error requesting additional information:", error);
+        res.status(500).json({
+          success: false,
+          message: "Failed to request additional information",
+          error: error.message
+        });
+      }
+    });
 
     //=== COllECTION FOR USER, PRODUCT, TOUR PACKAGE ===//
     const allProductsCollection = client
