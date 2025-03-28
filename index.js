@@ -12,7 +12,6 @@ app.use(cors());
 app.use(express.json());
 /////////////////////////////
 
-
 // Configure Cloudinary
 cloudinary.config({
   cloud_name: `${process.env.CLOUDINARY_CLOUD_NAME}`,
@@ -26,7 +25,6 @@ const upload = multer({
   storage,
   limits: { fileSize: 5 * 1024 * 1024 } // 5MB limit
 });
-
 
 const { MongoClient, ServerApiVersion, ObjectId } = require('mongodb');
 const uri = `mongodb+srv://${process.env.DB_USER}:${process.env.DB_PASS}@cluster0.c9iiq.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0`;
@@ -43,17 +41,17 @@ const client = new MongoClient(uri, {
 async function run() {
   try {
     // Connect the client to the server	(optional starting in v4.7)
-    await client.connect();
-
+    await client.connect();    
     // Collections
     const jobsCollection = client.db("FlyDriveGo").collection("jobs");
     const applicationsCollection = client.db("FlyDriveGo").collection("jobApplications");
-
+    
     ///API code Goes here//////
 
     //===JOBS RELATED APIS===//
     // GET ALL JOBS
     app.get('/jobs', async (req, res) => {
+
       try {
         const cursor = jobsCollection.find({});
         const jobs = await cursor.toArray();
@@ -510,6 +508,149 @@ async function run() {
     });
 
     //=== COllECTION FOR USER, PRODUCT, TOUR PACKAGE ===//
+
+        try {
+            const cursor = jobsCollection.find({});
+            const jobs = await cursor.toArray();
+            res.send(jobs);
+        } catch (error) {
+            console.error("Error fetching jobs:", error);
+            res.status(500).send("Internal Server Error");
+        }
+    });
+    
+    // GET SINGLE JOB BY ID
+    app.get('/jobs/:id', async (req, res) => {
+        try {
+            const id = parseInt(req.params.id);
+            const job = await jobsCollection.findOne({ id });
+            
+            if (!job) {
+                return res.status(404).send("Job not found");
+            }
+            
+            res.send(job);
+        } catch (error) {
+            console.error("Error fetching job:", error);
+            res.status(500).send("Internal Server Error");
+        }
+    });
+    
+    // ADD NEW JOB
+    app.post('/jobs', async (req, res) => {
+        try {
+            const job = req.body;
+            
+            // Get the highest existing ID to create new sequential ID
+            const maxIdJob = await jobsCollection.find().sort({ id: -1 }).limit(1).toArray();
+            const newId = maxIdJob.length > 0 ? maxIdJob[0].id + 1 : 1;
+            
+            job.id = newId;
+            const result = await jobsCollection.insertOne(job);
+            res.status(201).send(result);
+        } catch (error) {
+            console.error("Error posting job:", error);
+            res.status(500).send("Internal Server Error");
+        }
+    });
+    
+    // UPDATE JOB
+    app.patch('/jobs/:id', async (req, res) => {
+        try {
+            const id = parseInt(req.params.id);
+            const updatedData = req.body;
+            const result = await jobsCollection.updateOne(
+                { id },
+                { $set: updatedData }
+            );
+            
+            if (result.matchedCount === 0) {
+                return res.status(404).send("Job not found");
+            }
+            
+            res.send(result);
+        } catch (error) {
+            console.error("Error updating job:", error);
+            res.status(500).send("Internal Server Error");
+        }
+    });
+    
+    // DELETE JOB
+    app.delete('/jobs/:id', async (req, res) => {
+        try {
+            const id = parseInt(req.params.id);
+            const result = await jobsCollection.deleteOne({ id });
+            
+            if (result.deletedCount === 0) {
+                return res.status(404).send("Job not found");
+            }
+            
+            res.send(result);
+        } catch (error) {
+            console.error("Error deleting job:", error);
+            res.status(500).send("Internal Server Error");
+        }
+    });
+    
+    //===JOB APPLICATIONS APIS===//
+    // GET ALL APPLICATIONS
+    app.get('/job-applications', async (req, res) => {
+        try {
+            const cursor = applicationsCollection.find({});
+            const applications = await cursor.toArray();
+            res.send(applications);
+        } catch (error) {
+            console.error("Error fetching job applications:", error);
+            res.status(500).send("Internal Server Error");
+        }
+    });
+    
+    // GET APPLICATIONS BY JOB ID
+    app.get('/job-applications/job/:jobId', async (req, res) => {
+        try {
+            const jobId = parseInt(req.params.jobId);
+            const applications = await applicationsCollection.find({ jobId }).toArray();
+            res.send(applications);
+        } catch (error) {
+            console.error("Error fetching job applications:", error);
+            res.status(500).send("Internal Server Error");
+        }
+    });
+    
+    // ADD NEW APPLICATION
+    app.post('/job-applications', async (req, res) => {
+        try {
+            const application = req.body;
+            const result = await applicationsCollection.insertOne(application);
+            res.status(201).send(result);
+        } catch (error) {
+            console.error("Error submitting job application:", error);
+            res.status(500).send("Internal Server Error");
+        }
+    });
+    
+    // UPDATE APPLICATION STATUS
+    app.patch('/job-applications/:id', async (req, res) => {
+        try {
+            const id = req.params.id;
+            const { status } = req.body;
+            const result = await applicationsCollection.updateOne(
+                { _id: new ObjectId(id) },
+                { $set: { status } }
+            );
+            
+            if (result.matchedCount === 0) {
+                return res.status(404).send("Application not found");
+            }
+            
+            res.send(result);
+        } catch (error) {
+            console.error("Error updating application status:", error);
+            res.status(500).send("Internal Server Error");
+        }
+    });
+    
+
     const allProductsCollection = client
       .db("FlyDriveGo")
       .collection("ProductsCollection");
@@ -591,6 +732,23 @@ async function run() {
 
     //===========--------- SEllER APIS ------------===============
 
+    // Get All Api for Product
+    app.get("/products", async(req,res)=>{
+      const { search, tags, publisher } = req.query;
+      const filters = {};
+      if (search) {
+        filters.title = { $regex: search, $options: "i" };
+      }
+
+      if (tags) {
+        const tagsArray = Array.isArray(tags) ? tags : tags.split(",");
+        filters.tags = { $in: tagsArray };
+      }
+      const result = await allProductsCollection.find(filters).toArray();
+      res.send(result);
+    });
+
+
     // Add product apis
     app.post("/addProducts", async (req, res) => {
       const productsData = req.body;
@@ -615,8 +773,6 @@ async function run() {
       res.send(result);
     });
 
-
-
     // Delete Product 
     app.delete('/deleteProduct/:id', async (req, res) => {
       const id = req.params.id;
@@ -624,14 +780,14 @@ async function run() {
       const result = await allProductsCollection.deleteOne(query);
       res.send(result)
     })
-
+  
     ///API Code Above////
 
     // Send a ping to confirm a successful connection
-    await client.db("admin").command({ ping: 1 });
-    console.log(
-      "Pinged your deployment. You successfully connected to MongoDB!"
-    );
+    // await client.db("admin").command({ ping: 1 });
+    // console.log(
+    //   "Pinged your deployment. You successfully connected to MongoDB!"
+    // );
   } finally {
     // Ensures that the client will close when you finish/error
     //await client.close();
@@ -647,3 +803,4 @@ app.get('/', (req, res) => {
 app.listen(port, () => {
   console.log(`plane is waiting at ${port}`);
 })
+
