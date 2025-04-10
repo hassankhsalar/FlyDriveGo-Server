@@ -45,6 +45,7 @@ async function run() {
     // Collections
     const jobsCollection = client.db("FlyDriveGo").collection("jobs");
     const applicationsCollection = client.db("FlyDriveGo").collection("jobApplications");
+    const sellersCollection = client.db("FlyDriveGo").collection("sellersCollection");
     
     ///API code Goes here//////
 
@@ -466,58 +467,64 @@ async function run() {
       }
     });
 
-    // Request additional information
-    app.patch('/visa-applications/:id/request-info', async (req, res) => {
-      try {
-        const id = req.params.id;
-        const { additionalInfoRequest } = req.body;
-        if (!additionalInfoRequest) {
-          return res.status(400).json({
-            success: false,
-            message: "Additional information request details are required"
-          });
-        }
-        const updateData = {
-          status: 'additional_info_needed',
-          additionalInfoRequest,
-          additionalInfoRequestDate: new Date(),
-          updatedAt: new Date()
-        };
-        const result = await visaApplicationsCollection.updateOne(
-          { _id: new ObjectId(id) },
-          { $set: updateData }
-        );
-        if (result.matchedCount === 0) {
-          return res.status(404).json({
-            success: false,
-            message: "Application not found"
-          });
-        }
-        res.status(200).json({
-          success: true,
-          message: "Additional information requested"
-        });
-      } catch (error) {
-        console.error("Error requesting additional information:", error);
-        res.status(500).json({
-          success: false,
-          message: "Failed to request additional information",
-          error: error.message
-        });
-      }
+    // PATCH: Request Additional Info for Visa Application
+app.patch('/visa-applications/:id/request-info', async (req, res) => {
+  try {
+    const id = req.params.id;
+    const { additionalInfoRequest } = req.body;
+
+    if (!additionalInfoRequest) {
+      return res.status(400).json({
+        success: false,
+        message: "Additional information request details are required"
+      });
+    }
+
+    const updateData = {
+      status: 'additional_info_needed',
+      additionalInfoRequest,
+      additionalInfoRequestDate: new Date(),
+      updatedAt: new Date()
+    };
+
+    const result = await visaApplicationsCollection.updateOne(
+      { _id: new ObjectId(id) },
+      { $set: updateData }
+    );
+
+    if (result.matchedCount === 0) {
+      return res.status(404).json({
+        success: false,
+        message: "Application not found"
+      });
+    }
+
+    res.status(200).json({
+      success: true,
+      message: "Additional information requested"
     });
 
-    //=== COllECTION FOR USER, PRODUCT, TOUR PACKAGE ===//
-
-        try {
-            const cursor = jobsCollection.find({});
-            const jobs = await cursor.toArray();
-            res.send(jobs);
-        } catch (error) {
-            console.error("Error fetching jobs:", error);
-            res.status(500).send("Internal Server Error");
-        }
+  } catch (error) {
+    console.error("Error requesting additional information:", error);
+    res.status(500).json({
+      success: false,
+      message: "Failed to request additional information",
+      error: error.message
     });
+  }
+});
+
+// GET: Fetch all jobs
+app.get('/jobs', async (req, res) => {
+  try {
+    const jobs = await jobsCollection.find({}).toArray();
+    res.status(200).json(jobs);
+  } catch (error) {
+    console.error("Error fetching jobs:", error);
+    res.status(500).send("Internal Server Error");
+  }
+});
+
     
     // GET SINGLE JOB BY ID
     app.get('/jobs/:id', async (req, res) => {
@@ -780,6 +787,32 @@ async function run() {
       const result = await allProductsCollection.deleteOne(query);
       res.send(result)
     })
+
+
+    ///Become a Seller API
+    app.post('/becomeseller', async (req, res) => {
+      const { email, storeName, tradeLicense, category, bannerUrl } = req.body;
+    
+      if (!email || !storeName || !tradeLicense || !category || !bannerUrl) {
+        return res.status(400).json({ message: 'All fields are required.' });
+      }
+    
+      try {
+        const result = await sellersCollection.insertOne({
+          email,
+          storeName,
+          tradeLicense,
+          category,
+          bannerUrl,
+          createdAt: new Date(),
+        });
+    
+        res.status(201).json({ message: 'Seller registered successfully!', id: result.insertedId });
+      } catch (error) {
+        console.error('Error inserting seller:', error);
+        res.status(500).json({ message: 'Server error' });
+      }
+    });
   
     ///API Code Above////
 
