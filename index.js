@@ -8,7 +8,10 @@ const cloudinary = require("cloudinary").v2;
 const port = process.env.PORT || 5000;
 
 //middleware
-app.use(cors());
+app.use(cors({
+  origin: ['http://localhost:3000', 'http://localhost:5173'],
+  methods: ['GET', 'POST', 'PUT', 'DELETE'],
+}))
 app.use(express.json());
 /////////////////////////////
 
@@ -41,11 +44,11 @@ const client = new MongoClient(uri, {
 async function run() {
   try {
     // Connect the client to the server	(optional starting in v4.7)
-    await client.connect();    
+    await client.connect();
     // Collections
     const jobsCollection = client.db("FlyDriveGo").collection("jobs");
     const applicationsCollection = client.db("FlyDriveGo").collection("jobApplications");
-    
+
     ///API code Goes here//////
 
     //===JOBS RELATED APIS===//
@@ -588,7 +591,7 @@ async function run() {
     //===========--------- SEllER APIS ------------===============
 
     // Get All Api for Product
-    app.get("/products", async(req,res)=>{
+    app.get("/products", async (req, res) => {
       const { search, tags, publisher } = req.query;
       const filters = {};
       if (search) {
@@ -635,7 +638,63 @@ async function run() {
       const result = await allProductsCollection.deleteOne(query);
       res.send(result)
     })
-  
+
+
+
+
+    //=======Transportation API=======//
+    //=======Transportation API=======//
+    //=======Transportation API=======//
+    // all transportation collection
+    const trasportationCars = client.db("FlyDriveGo").collection("TrasportationCars");
+
+
+    // get all transportation cars
+    app.get("/transportation-cars", async (req, res) => {
+      const query = {};
+      const result = await trasportationCars.find(query).toArray();
+      res.send(result);
+    });
+
+
+    // TransportationBusTestimonials collection
+    const transportationBusTestimonials = client.db("FlyDriveGo").collection("TransportationBusTestimonials");
+    // Get all bus testimonials
+    app.get("/transportation-bus-testimonials", async (req, res) => {
+      try {
+        const query = {};
+        const result = await transportationBusTestimonials.find(query).toArray();
+        res.json(result);
+      } catch (error) {
+        console.error("Error fetching bus testimonials:", error);
+        res.status(500).json({ error: "Internal Server Error" });
+      }
+    });
+
+
+    // Get all bus options
+    app.get("/transportation-bus-options", async (req, res) => {
+      try {
+        const query = {};
+        const result = await transportationBusOptions.find(query).toArray();
+        res.json(result);
+      } catch (error) {
+        console.error("Error fetching bus options:", error);
+        res.status(500).json({ error: "Internal Server Error" });
+      }
+    });
+
+    
+
+    //=======Transportation API=======//
+    //=======Transportation API=======//
+    //=======Transportation API=======//
+
+
+
+
+
+
     ///API Code Above////
 
     // Send a ping to confirm a successful connection
