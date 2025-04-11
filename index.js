@@ -715,17 +715,21 @@ async function run() {
       res.send(result);
     });
 
-    // Moderator API for
-    app.get("/users/moderator/:email", async (req, res) => {
-      const email = req.params.email;
-      const query = { email: email };
-      const user = await userCollection.findOne(query);
+    app.get("/allUsers", async (req, res) => {
+      const result = await userCollection.find().toArray();
+      res.send(result);
+    });
 
-      let moderator = false;
+    // userRole api
+    app.get("/users/role/:email", async (req, res) => {
+      const email = req.params.email;
+      const user = await userCollection.findOne({ email });
+
       if (user) {
-        moderator = user?.role === "moderator";
+        res.json({ userType: user.userType });
+      } else {
+        res.status(404).json({ error: "User not found" });
       }
-      res.send({ moderator });
     });
 
     // Moderator: make seller
@@ -861,9 +865,9 @@ async function run() {
 
     // Send a ping to confirm a successful connection
     // await client.db("admin").command({ ping: 1 });
-    // console.log(
-    //   "Pinged your deployment. You successfully connected to MongoDB!"
-    // );
+    console.log(
+      "Pinged your deployment. You successfully connected to MongoDB!"
+    );
   } finally {
     // Ensures that the client will close when you finish/error
     //await client.close();
