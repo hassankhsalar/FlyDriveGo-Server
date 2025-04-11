@@ -59,6 +59,19 @@ async function run() {
       res.send(result);
     });
 
+    // Moderator API
+    app.get("/users/moderator/:email", async (req, res) => {
+      const email = req.params.email;
+      const query = { email: email };
+      const user = await userCollection.findOne(query);
+
+      let moderator = false;
+      if (user) {
+        moderator = user?.role === "moderator";
+      }
+      res.send({ moderator });
+    });
+
     // Moderator: make seller
     app.patch("/users/moderator/:id", async (req, res) => {
       const id = req.params.id;
@@ -84,6 +97,12 @@ async function run() {
     app.post("/tourPackage", async (req, res) => {
       const data = req.body;
       const result = await tourPackCollection.insertOne(data);
+      res.send(result);
+    });
+
+    app.get("/tourPackage", async (req, res) => {
+      const data = req.body;
+      const result = await tourPackCollection.find(data).toArray();
       res.send(result);
     });
 
