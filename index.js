@@ -36,6 +36,9 @@ async function run() {
     const tourPackCollection = client
       .db("FlyDriveGo")
       .collection("TourPackage");
+    const airtickets = client
+      .db("FlyDriveGo")
+      .collection("AirTicketBooking");  
 
     // ===== User Api ======///////
 
@@ -59,6 +62,30 @@ async function run() {
       const result = await userCollection.find(filter).toArray();
       res.send(result);
     });
+    app.get("/users/:email", async (req, res) => {
+      const email = req.params.email
+      const query = {email:email };
+      const result = await userCollection.find(query).toArray();
+      res.send(result)
+    });
+    app.patch("/users/:email", async (req, res) => {
+      const updateduser = req.body;
+      const email = req.params.email;
+    
+      const filter = { email: email };
+      const updatedDoc = {
+        $set: {
+          name: updateduser.name,
+          phoneNumber: updateduser.phoneNumber,
+          gender: updateduser.gender,
+          dateOfBirth: updateduser.dateOfBirth,
+        },
+      };
+    
+      const result = await userCollection.updateOne(filter, updatedDoc);
+      res.send(result);
+    });
+    
 
     // Moderator: make seller
     app.patch("/users/moderator/:id", async (req, res) => {
@@ -144,7 +171,8 @@ async function run() {
       res.send(result)
   })
 
-    
+  
+
     
 
 
