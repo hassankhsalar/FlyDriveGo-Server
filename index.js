@@ -9,6 +9,7 @@ const cloudinary = require("cloudinary").v2;
 const port = process.env.PORT || 5000;
 
 //middleware
+
 app.use(cors({
   origin: [
     'http://localhost:3000',
@@ -16,8 +17,9 @@ app.use(cors({
     'https://flydrivego.netlify.app',
     'https://your-vercel-backend.vercel.app'
   ],
-  methods: ['GET', 'POST', 'PUT', 'DELETE'],
+  methods: ['GET', 'POST', 'PUT', 'DELETE','PATCH'],
 }))
+
 app.use(express.json());
 /////////////////////////////
 
@@ -698,9 +700,7 @@ async function run() {
     const allProductsCollection = client
       .db("FlyDriveGo")
       .collection("ProductsCollection");
-    const cartCollection = client
-      .db("FlyDriveGo")
-      .collection("carts");
+    const cartCollection = client.db("FlyDriveGo").collection("carts");
     const userCollection = client.db("FlyDriveGo").collection("users");
     const tourPackCollection = client
       .db("FlyDriveGo")
@@ -729,17 +729,21 @@ async function run() {
       res.send(result);
     });
 
-    // Moderator API for
-    app.get("/users/moderator/:email", async (req, res) => {
-      const email = req.params.email;
-      const query = { email: email };
-      const user = await userCollection.findOne(query);
+    app.get("/allUsers", async (req, res) => {
+      const result = await userCollection.find().toArray();
+      res.send(result);
+    });
 
-      let moderator = false;
+    // userRole api
+    app.get("/users/role/:email", async (req, res) => {
+      const email = req.params.email;
+      const user = await userCollection.findOne({ email });
+
       if (user) {
-        moderator = user?.role === "moderator";
+        res.json({ userType: user.userType });
+      } else {
+        res.status(404).json({ error: "User not found" });
       }
-      res.send({ moderator });
     });
 
     // Moderator: make seller
@@ -748,7 +752,7 @@ async function run() {
       const filter = { _id: new ObjectId(id) };
       const updatedDoc = {
         $set: {
-          role: "seller",
+          userType: "seller",
         },
       };
       const result = await userCollection.updateOne(filter, updatedDoc);
@@ -817,25 +821,25 @@ async function run() {
     });
 
     // Cart  API
-    app.get('/carts', async(req,res) =>{
+    app.get("/carts", async (req, res) => {
       const email = req.query.email;
-      const query={email: email};
-      const  result = await cartCollection.find(query).toArray();
-      res.send(result); 
-    });
-
-    app.post('/carts', async(req,res)=>{
-      const cartItem = req.body;
-      const result  = await cartCollection.insertOne(cartItem);
+      const query = { email: email };
+      const result = await cartCollection.find(query).toArray();
       res.send(result);
     });
 
-    app.delete('/carts/:id', async (req,res) =>{
+    app.post("/carts", async (req, res) => {
+      const cartItem = req.body;
+      const result = await cartCollection.insertOne(cartItem);
+      res.send(result);
+    });
+
+    app.delete("/carts/:id", async (req, res) => {
       const id = req.params.id;
-      const  query={_id:  new  ObjectId(id)}
+      const query = { _id: new ObjectId(id) };
       const result = await cartCollection.deleteOne(query);
       res.send(result);
-    })
+    });
 
     // Get Product By Email
     app.get("/sellerProduct/:email", async (req, res) => {
@@ -861,18 +865,17 @@ async function run() {
       const id = req.params.id;
       const query = { _id: new ObjectId(id) };
       const result = await allProductsCollection.deleteOne(query);
-      res.send(result)
-    })
-
-
-
+      res.send(result);
+    });
 
     //=======Transportation API=======//
     //=======Transportation API=======//
     //=======Transportation API=======//
     // all transportation collection
+
     const trasportationCars = client.db("FlyDriveGo").collection("TrasportationCars");
     const transportationBusOptions = client.db("FlyDriveGo").collection("transportationBusOptions");
+
 
 
     // get all transportation cars
@@ -882,21 +885,23 @@ async function run() {
       res.send(result);
     });
 
-
     // TransportationBusTestimonials collection
-    const transportationBusTestimonials = client.db("FlyDriveGo").collection("TransportationBusTestimonials");
+    const transportationBusTestimonials = client
+      .db("FlyDriveGo")
+      .collection("TransportationBusTestimonials");
     // Get all bus testimonials
     app.get("/transportation-bus-testimonials", async (req, res) => {
       try {
         const query = {};
-        const result = await transportationBusTestimonials.find(query).toArray();
+        const result = await transportationBusTestimonials
+          .find(query)
+          .toArray();
         res.json(result);
       } catch (error) {
         console.error("Error fetching bus testimonials:", error);
         res.status(500).json({ error: "Internal Server Error" });
       }
     });
-
 
     // Get all bus options
     app.get("/transportation-bus-options", async (req, res) => {
@@ -910,12 +915,10 @@ async function run() {
       }
     });
 
-    
+    //=======Transportation API=======//
+    //=======Transportation API=======//
+    //=======Transportation API=======//
 
-    //=======Transportation API=======//
-    //=======Transportation API=======//
-    //=======Transportation API=======//
-    
     ///Become a Seller API
     app.post("/becomeseller", async (req, res) => {
       const { email, storeName, tradeLicense, category, bannerUrl } = req.body;
@@ -944,6 +947,12 @@ async function run() {
       }
     });
 
+
+    app.get("/becomeseller", async (req, res) => {
+      const result = await sellersCollection.find().toArray();
+      res.send(result);
+    });
+
     // Stripe Payment
     app.post("/create-payment-intent", async(req, res)=>{
       const {price}= req.body;
@@ -960,13 +969,14 @@ async function run() {
       })
     })
 
+
     ///API Code Above////
 
     // Send a ping to confirm a successful connection
     // await client.db("admin").command({ ping: 1 });
-    // console.log(
-    //   "Pinged your deployment. You successfully connected to MongoDB!"
-    // );
+    console.log(
+      "Pinged your deployment. You successfully connected to MongoDB!"
+    );
   } finally {
     // Ensures that the client will close when you finish/error
     //await client.close();
