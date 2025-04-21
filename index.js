@@ -2,6 +2,7 @@ const express = require("express");
 const app = express();
 const cors = require("cors");
 require("dotenv").config();
+const stripe= require('stripe')(process.env.STRIPE_SK);
 const multer = require("multer");
 const axios = require("axios");
 const cloudinary = require("cloudinary").v2;
@@ -942,6 +943,22 @@ async function run() {
         res.status(500).json({ message: "Server error" });
       }
     });
+
+    // Stripe Payment
+    app.post("/create-payment-intent", async(req, res)=>{
+      const {price}= req.body;
+      const amount = parseInt(price*100);
+      
+
+      const paymentIntent = await stripe.paymentIntents.create({
+        amount: amount,
+        currency: "usd",
+        payment_method_types: ['card']
+      });
+      res.send({
+        clientSecret: paymentIntent.client_secret
+      })
+    })
 
     ///API Code Above////
 
