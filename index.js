@@ -2,18 +2,24 @@ const express = require("express");
 const app = express();
 const cors = require("cors");
 require("dotenv").config();
+const stripe= require('stripe')(process.env.STRIPE_SK);
 const multer = require("multer");
 const axios = require("axios");
 const cloudinary = require("cloudinary").v2;
 const port = process.env.PORT || 5000;
 
 //middleware
-app.use(
-  cors({
-    origin: ["http://localhost:3000", "http://localhost:5173"],
-    methods: ["GET", "POST", "PUT", "DELETE", "PATCH"],
-  })
-);
+
+app.use(cors({
+  origin: [
+    'http://localhost:3000',
+    'http://localhost:5173',
+    'https://flydrivego.netlify.app',
+    'https://your-vercel-backend.vercel.app'
+  ],
+  methods: ['GET', 'POST', 'PUT', 'DELETE','PATCH'],
+}))
+
 app.use(express.json());
 /////////////////////////////
 
@@ -46,7 +52,7 @@ const client = new MongoClient(uri, {
 async function run() {
   try {
     // Connect the client to the server	(optional starting in v4.7)
-    await client.connect();
+    //await client.connect();
     // Collections
     const jobsCollection = client.db("FlyDriveGo").collection("jobs");
 
@@ -866,9 +872,11 @@ async function run() {
     //=======Transportation API=======//
     //=======Transportation API=======//
     // all transportation collection
-    const trasportationCars = client
-      .db("FlyDriveGo")
-      .collection("TrasportationCars");
+
+    const trasportationCars = client.db("FlyDriveGo").collection("TrasportationCars");
+    const transportationBusOptions = client.db("FlyDriveGo").collection("transportationBusOptions");
+
+
 
     // get all transportation cars
     app.get("/transportation-cars", async (req, res) => {
@@ -939,10 +947,28 @@ async function run() {
       }
     });
 
+
     app.get("/becomeseller", async (req, res) => {
       const result = await sellersCollection.find().toArray();
       res.send(result);
     });
+
+    // Stripe Payment
+    app.post("/create-payment-intent", async(req, res)=>{
+      const {price}= req.body;
+      const amount = parseInt(price*100);
+      
+
+      const paymentIntent = await stripe.paymentIntents.create({
+        amount: amount,
+        currency: "usd",
+        payment_method_types: ['card']
+      });
+      res.send({
+        clientSecret: paymentIntent.client_secret
+      })
+    })
+
 
     ///API Code Above////
 
