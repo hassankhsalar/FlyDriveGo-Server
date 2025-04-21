@@ -8,7 +8,12 @@ const cloudinary = require("cloudinary").v2;
 const port = process.env.PORT || 5000;
 
 //middleware
-app.use(cors());
+app.use(
+  cors({
+    origin: ["http://localhost:3000", "http://localhost:5173"],
+    methods: ["GET", "POST", "PUT", "DELETE", "PATCH"],
+  })
+);
 app.use(express.json());
 /////////////////////////////
 
@@ -44,6 +49,7 @@ async function run() {
     await client.connect();
     // Collections
     const jobsCollection = client.db("FlyDriveGo").collection("jobs");
+
     const applicationsCollection = client
       .db("FlyDriveGo")
       .collection("jobApplications");
@@ -55,6 +61,7 @@ async function run() {
 
     //===JOBS RELATED APIS===//
     // GET ALL JOBS
+
     app.get("/jobs", async (req, res) => {
       try {
         const cursor = jobsCollection.find({});
@@ -687,6 +694,7 @@ async function run() {
     const allProductsCollection = client
       .db("FlyDriveGo")
       .collection("ProductsCollection");
+    const cartCollection = client.db("FlyDriveGo").collection("carts");
     const userCollection = client.db("FlyDriveGo").collection("users");
     const tourPackCollection = client
       .db("FlyDriveGo")
@@ -738,7 +746,7 @@ async function run() {
       const filter = { _id: new ObjectId(id) };
       const updatedDoc = {
         $set: {
-          role: "seller",
+          userType: "seller",
         },
       };
       const result = await userCollection.updateOne(filter, updatedDoc);
@@ -806,6 +814,27 @@ async function run() {
       res.status(201).send(result);
     });
 
+    // Cart  API
+    app.get("/carts", async (req, res) => {
+      const email = req.query.email;
+      const query = { email: email };
+      const result = await cartCollection.find(query).toArray();
+      res.send(result);
+    });
+
+    app.post("/carts", async (req, res) => {
+      const cartItem = req.body;
+      const result = await cartCollection.insertOne(cartItem);
+      res.send(result);
+    });
+
+    app.delete("/carts/:id", async (req, res) => {
+      const id = req.params.id;
+      const query = { _id: new ObjectId(id) };
+      const result = await cartCollection.deleteOne(query);
+      res.send(result);
+    });
+
     // Get Product By Email
     app.get("/sellerProduct/:email", async (req, res) => {
       const email = req.params.email;
@@ -833,6 +862,55 @@ async function run() {
       res.send(result);
     });
 
+    //=======Transportation API=======//
+    //=======Transportation API=======//
+    //=======Transportation API=======//
+    // all transportation collection
+    const trasportationCars = client
+      .db("FlyDriveGo")
+      .collection("TrasportationCars");
+
+    // get all transportation cars
+    app.get("/transportation-cars", async (req, res) => {
+      const query = {};
+      const result = await trasportationCars.find(query).toArray();
+      res.send(result);
+    });
+
+    // TransportationBusTestimonials collection
+    const transportationBusTestimonials = client
+      .db("FlyDriveGo")
+      .collection("TransportationBusTestimonials");
+    // Get all bus testimonials
+    app.get("/transportation-bus-testimonials", async (req, res) => {
+      try {
+        const query = {};
+        const result = await transportationBusTestimonials
+          .find(query)
+          .toArray();
+        res.json(result);
+      } catch (error) {
+        console.error("Error fetching bus testimonials:", error);
+        res.status(500).json({ error: "Internal Server Error" });
+      }
+    });
+
+    // Get all bus options
+    app.get("/transportation-bus-options", async (req, res) => {
+      try {
+        const query = {};
+        const result = await transportationBusOptions.find(query).toArray();
+        res.json(result);
+      } catch (error) {
+        console.error("Error fetching bus options:", error);
+        res.status(500).json({ error: "Internal Server Error" });
+      }
+    });
+
+    //=======Transportation API=======//
+    //=======Transportation API=======//
+    //=======Transportation API=======//
+
     ///Become a Seller API
     app.post("/becomeseller", async (req, res) => {
       const { email, storeName, tradeLicense, category, bannerUrl } = req.body;
@@ -859,6 +937,11 @@ async function run() {
         console.error("Error inserting seller:", error);
         res.status(500).json({ message: "Server error" });
       }
+    });
+
+    app.get("/becomeseller", async (req, res) => {
+      const result = await sellersCollection.find().toArray();
+      res.send(result);
     });
 
     ///API Code Above////
