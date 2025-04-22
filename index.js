@@ -1612,6 +1612,206 @@ async function run() {
       }
     });
 
+    // Create car booking collections
+    const carBookingsCollection = client.db("FlyDriveGo").collection("carBookings");
+
+    // Helper function for generating car booking references
+    function generateCarBookingReference() {
+      const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+      let reference = 'CAR';
+      for (let i = 0; i < 6; i++) {
+        reference += chars.charAt(Math.floor(Math.random() * chars.length));
+      }
+      return reference;
+    }
+
+    // Create car booking
+    app.post("/car-bookings", async (req, res) => {
+      try {
+        const {
+          carId,
+          carName,
+          startDate,
+          endDate,
+          totalDays,
+          basePrice,
+          contactInfo,
+          driverInfo,
+          additionalOptions,
+          totalPrice,
+          imageUrl
+        } = req.body;
+
+        if (!carId || !carName || !startDate || !endDate || !contactInfo || !driverInfo || !totalPrice) {
+          return res.status(400).json({ error: "Missing required booking information" });
+        }
+
+        // Generate booking reference number
+        const bookingReference = generateCarBookingReference();
+
+        // Create booking record
+        const bookingData = {
+          bookingReference,
+          carId: ObjectId.isValid(carId) ? new ObjectId(carId) : parseInt(carId),
+          carName,
+          startDate,
+          endDate,
+          totalDays,
+          basePrice: basePrice || totalPrice,
+          contactInfo,
+          driverInfo,
+          additionalOptions,
+          totalPrice,
+          imageUrl,
+          status: 'confirmed',
+          paymentStatus: 'pending',
+          createdAt: new Date(),
+        };
+
+        const result = await carBookingsCollection.insertOne(bookingData);
+
+        res.status(201).json({
+          success: true,
+          bookingId: result.insertedId,
+          bookingReference,
+          message: "Booking created successfully"
+        });
+
+      } catch (error) {
+        console.error("Error creating car booking:", error);
+        res.status(500).json({ error: "Failed to create booking" });
+      }
+    });
+
+    // Get car booking details
+    app.get("/car-bookings/:id", async (req, res) => {
+      try {
+        const { id } = req.params;
+        const { reference, email } = req.query;
+
+        let booking;
+
+        if (id !== 'find') {
+          // Find by ID
+          if (ObjectId.isValid(id)) {
+            booking = await carBookingsCollection.findOne({ _id: new ObjectId(id) });
+          }
+        } else if (reference) {
+          // First try to find by reference only
+          booking = await carBookingsCollection.findOne({ bookingReference: reference });
+
+          // If not found with reference only and email is provided, try with both
+          if (!booking && email) {
+            booking = await carBookingsCollection.findOne({
+              bookingReference: reference,
+              'contactInfo.email': email
+            });
+          }
+        } else {
+          return res.status(400).json({ error: "Invalid search parameters" });
+        }
+
+        if (!booking) {
+          return res.status(404).json({ error: "Booking not found" });
+        }
+
+        res.status(200).json(booking);
+      } catch (error) {
+        console.error("Error fetching car booking:", error);
+        res.status(500).json({ error: "Failed to fetch booking details" });
+      }
+    });
+
+    // Update car booking payment status
+    app.patch("/car-bookings/:id/payment", async (req, res) => {
+      try {
+        const { id } = req.params;
+        const { paymentStatus, paymentId, paymentMethod, paymentTimestamp } = req.body;
+
+        if (!ObjectId.isValid(id)) {
+          return res.status(400).json({ success: false, message: "Invalid booking ID format" });
+        }
+
+        // Update the booking with payment information
+        const result = await carBookingsCollection.updateOne(
+          { _id: new ObjectId(id) },
+          {
+            $set: {
+              paymentStatus,
+              paymentId,
+              paymentMethod,
+              paymentTimestamp,
+              updatedAt: new Date()
+            }
+          }
+        );
+
+        if (result.matchedCount === 0) {
+          return res.status(404).json({ success: false, message: "Booking not found" });
+        }
+
+        res.status(200).json({
+          success: true,
+          message: "Payment status updated successfully"
+        });
+      } catch (error) {
+        console.error("Error updating car booking payment status:", error);
+        res.status(500).json({ success: false, message: "Failed to update payment status" });
+      }
+    });
+
+    // Payment recovery endpoint for car bookings
+    app.patch("/car-bookings/:id/payment-recovery", async (req, res) => {
+      try {
+        const { id } = req.params;
+        const { paymentStatus, paymentId, paymentMethod, paymentTimestamp } = req.body;
+
+        if (!ObjectId.isValid(id)) {
+          return res.status(400).json({ success: false, message: "Invalid booking ID format" });
+        }
+
+        // Verify payment with Stripe (if applicable)
+        if (paymentId && stripe) {
+          try {
+            const paymentIntent = await stripe.paymentIntents.retrieve(paymentId);
+            if (paymentIntent.status !== 'succeeded') {
+              return res.status(400).json({
+                success: false,
+                message: "Payment has not been completed successfully"
+              });
+            }
+          } catch (stripeError) {
+            console.error("Stripe verification error:", stripeError);
+            // Continue anyway since we're in recovery mode
+          }
+        }
+
+        const result = await carBookingsCollection.updateOne(
+          { _id: new ObjectId(id) },
+          {
+            $set: {
+              paymentStatus,
+              paymentId,
+              paymentMethod,
+              paymentTimestamp,
+              updatedAt: new Date()
+            }
+          }
+        );
+
+        if (result.matchedCount === 0) {
+          return res.status(404).json({ success: false, message: "Booking not found" });
+        }
+
+        res.status(200).json({
+          success: true,
+          message: "Payment status recovered successfully"
+        });
+      } catch (error) {
+        console.error("Error recovering car booking payment status:", error);
+        res.status(500).json({ success: false, message: "Failed to recover payment status" });
+      }
+    });
 
     ///API Code Above////
 
