@@ -2,7 +2,7 @@ const express = require("express");
 const app = express();
 const cors = require("cors");
 require("dotenv").config();
-const stripe= require('stripe')(process.env.STRIPE_SK);
+const stripe = require('stripe')(process.env.STRIPE_SK);
 const multer = require("multer");
 const axios = require("axios");
 const cloudinary = require("cloudinary").v2;
@@ -17,7 +17,7 @@ app.use(cors({
     'https://flydrivego.netlify.app',
     'https://your-vercel-backend.vercel.app'
   ],
-  methods: ['GET', 'POST', 'PUT', 'DELETE','PATCH'],
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH'],
 }))
 
 app.use(express.json());
@@ -1317,12 +1317,17 @@ async function run() {
           if (ObjectId.isValid(id)) {
             booking = await busBookingsCollection.findOne({ _id: new ObjectId(id) });
           }
-        } else if (reference && email) {
-          // Find by reference and email
-          booking = await busBookingsCollection.findOne({
-            bookingReference: reference,
-            'contactInfo.email': email
-          });
+        } else if (reference) {
+          // First try to find by reference only (no email required)
+          booking = await busBookingsCollection.findOne({ bookingReference: reference });
+
+          // If not found with reference only and email is provided, try with both
+          if (!booking && email) {
+            booking = await busBookingsCollection.findOne({
+              bookingReference: reference,
+              'contactInfo.email': email
+            });
+          }
         } else {
           return res.status(400).json({ error: "Invalid search parameters" });
         }
@@ -1337,6 +1342,7 @@ async function run() {
         res.status(500).json({ error: "Failed to fetch booking details" });
       }
     });
+
 
     // Helper functions
     function generateBookingReference() {
@@ -1442,10 +1448,10 @@ async function run() {
     });
 
     // Stripe Payment
-    app.post("/create-payment-intent", async(req, res)=>{
-      const {price}= req.body;
-      const amount = parseInt(price*100);
-      
+    app.post("/create-payment-intent", async (req, res) => {
+      const { price } = req.body;
+      const amount = parseInt(price * 100);
+
 
       const paymentIntent = await stripe.paymentIntents.create({
         amount: amount,
@@ -1457,6 +1463,154 @@ async function run() {
       })
     })
 
+    // Update bus booking payment status
+    app.patch("/bus-bookings/:id/payment", async (req, res) => {
+      try {
+        const { id } = req.params;
+        const { paymentStatus, paymentId, paymentMethod, paymentTimestamp } = req.body;
+
+        if (!ObjectId.isValid(id)) {
+          return res.status(400).json({ success: false, message: "Invalid booking ID format" });
+        }
+
+        // Update the booking with payment information
+        const result = await busBookingsCollection.updateOne(
+          { _id: new ObjectId(id) },
+          {
+            $set: {
+              paymentStatus,
+              paymentId,
+              paymentMethod,
+              paymentTimestamp,
+              updatedAt: new Date()
+            }
+          }
+        );
+
+        if (result.matchedCount === 0) {
+          return res.status(404).json({ success: false, message: "Booking not found" });
+        }
+
+        // Update seat status from reserved to confirmed/booked
+        const booking = await busBookingsCollection.findOne({ _id: new ObjectId(id) });
+        if (booking) {
+          // Get the seat layout for this booking
+          let seatLayout = await busSeatsCollection.findOne({
+            busId: booking.busId,
+            date: booking.date
+          });
+
+          if (seatLayout) {
+            // Update seat status for all seats in this booking
+            const updatedSeats = seatLayout.seats.map(seat => {
+              if (booking.seatNumbers.includes(seat.seatNumber)) {
+                return {
+                  ...seat,
+                  status: 'booked',
+                  reservation: null
+                };
+              }
+              return seat;
+            });
+
+            await busSeatsCollection.updateOne(
+              { _id: seatLayout._id },
+              { $set: { seats: updatedSeats, updatedAt: new Date() } }
+            );
+          }
+        }
+
+        res.status(200).json({
+          success: true,
+          message: "Payment status updated successfully"
+        });
+      } catch (error) {
+        console.error("Error updating payment status:", error);
+        res.status(500).json({ success: false, message: "Failed to update payment status" });
+      }
+    });
+
+    // Also add the recovery endpoint for handling payment errors
+    app.patch("/bus-bookings/:id/payment-recovery", async (req, res) => {
+      try {
+        const { id } = req.params;
+        const { paymentStatus, paymentId, paymentMethod, paymentTimestamp } = req.body;
+
+        if (!ObjectId.isValid(id)) {
+          return res.status(400).json({ success: false, message: "Invalid booking ID format" });
+        }
+
+        // Verify payment with Stripe first (if you have Stripe integration)
+        // This code assumes you have a Stripe configuration set up
+        if (paymentId && stripe) {
+          try {
+            const paymentIntent = await stripe.paymentIntents.retrieve(paymentId);
+            if (paymentIntent.status !== 'succeeded') {
+              return res.status(400).json({
+                success: false,
+                message: "Payment has not been completed successfully"
+              });
+            }
+          } catch (stripeError) {
+            console.error("Stripe verification error:", stripeError);
+            // Continue anyway since we're in recovery mode
+          }
+        }
+
+        // Same update logic as the regular payment endpoint
+        const result = await busBookingsCollection.updateOne(
+          { _id: new ObjectId(id) },
+          {
+            $set: {
+              paymentStatus,
+              paymentId,
+              paymentMethod,
+              paymentTimestamp,
+              updatedAt: new Date()
+            }
+          }
+        );
+
+        if (result.matchedCount === 0) {
+          return res.status(404).json({ success: false, message: "Booking not found" });
+        }
+
+        // Update seat statuses
+        const booking = await busBookingsCollection.findOne({ _id: new ObjectId(id) });
+        if (booking) {
+          let seatLayout = await busSeatsCollection.findOne({
+            busId: booking.busId,
+            date: booking.date
+          });
+
+          if (seatLayout) {
+            const updatedSeats = seatLayout.seats.map(seat => {
+              if (booking.seatNumbers.includes(seat.seatNumber)) {
+                return {
+                  ...seat,
+                  status: 'booked',
+                  reservation: null
+                };
+              }
+              return seat;
+            });
+
+            await busSeatsCollection.updateOne(
+              { _id: seatLayout._id },
+              { $set: { seats: updatedSeats, updatedAt: new Date() } }
+            );
+          }
+        }
+
+        res.status(200).json({
+          success: true,
+          message: "Payment status recovered successfully"
+        });
+      } catch (error) {
+        console.error("Error recovering payment status:", error);
+        res.status(500).json({ success: false, message: "Failed to recover payment status" });
+      }
+    });
 
 
     ///API Code Above////
