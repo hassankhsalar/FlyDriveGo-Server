@@ -2,18 +2,50 @@ const express = require("express");
 const app = express();
 const cors = require("cors");
 require("dotenv").config();
+const stripe = require("stripe")(process.env.STRIPE_SK);
+const multer = require("multer");
+const cloudinary = require("cloudinary").v2;
 const port = process.env.PORT || 5000;
 
-//middleware
-app.use(cors());
+// Import routes
+const getRoutes = require("./routes/getRoutes");
+const postRoutes = require("./routes/postRoutes");
+const patchRoutes = require("./routes/patchRoutes");
+const putRoutes = require("./routes/putRoutes");
+const deleteRoutes = require("./routes/deleteRoutes");
+
+// Middleware
+app.use(
+  cors({
+    origin: [
+      "http://localhost:3000",
+      "http://localhost:5173",
+      "https://flydrivego.netlify.app",
+      "https://your-vercel-backend.vercel.app",
+    ],
+    methods: ["GET", "POST", "PUT", "DELETE", "PATCH"],
+  })
+);
 app.use(express.json());
-/////////////////////////////
 
+// Configure Cloudinary
+cloudinary.config({
+  cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
+  api_key: process.env.CLOUDINARY_API_KEY,
+  api_secret: process.env.CLOUDINARY_API_SECRET,
+});
 
-const { MongoClient, ServerApiVersion, ObjectId } = require('mongodb');
+// Configure Multer for handling file uploads
+const storage = multer.memoryStorage();
+const upload = multer({
+  storage,
+  limits: { fileSize: 5 * 1024 * 1024 }, // 5MB limit
+});
+
+// MongoDB Setup
+const { MongoClient, ServerApiVersion } = require("mongodb");
 const uri = `mongodb+srv://${process.env.DB_USER}:${process.env.DB_PASS}@cluster0.c9iiq.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0`;
 
-// Create a MongoClient with a MongoClientOptions object to set the Stable API version
 const client = new MongoClient(uri, {
   serverApi: {
     version: ServerApiVersion.v1,
@@ -36,9 +68,6 @@ async function run() {
     const tourPackCollection = client
       .db("FlyDriveGo")
       .collection("TourPackage");
-    const airtickets = client
-      .db("FlyDriveGo")
-      .collection("AirTicketBooking");  
 
     // ===== User Api ======///////
 
@@ -62,30 +91,6 @@ async function run() {
       const result = await userCollection.find(filter).toArray();
       res.send(result);
     });
-    app.get("/users/:email", async (req, res) => {
-      const email = req.params.email
-      const query = {email:email };
-      const result = await userCollection.find(query).toArray();
-      res.send(result)
-    });
-    app.patch("/users/:email", async (req, res) => {
-      const updateduser = req.body;
-      const email = req.params.email;
-    
-      const filter = { email: email };
-      const updatedDoc = {
-        $set: {
-          name: updateduser.name,
-          phoneNumber: updateduser.phoneNumber,
-          gender: updateduser.gender,
-          dateOfBirth: updateduser.dateOfBirth,
-        },
-      };
-    
-      const result = await userCollection.updateOne(filter, updatedDoc);
-      res.send(result);
-    });
-    
 
     // Moderator: make seller
     app.patch("/users/moderator/:id", async (req, res) => {
@@ -171,8 +176,7 @@ async function run() {
       res.send(result)
   })
 
-  
-
+    
     
 
 
@@ -190,13 +194,6 @@ async function run() {
     //await client.close();
   }
 }
-run().catch(console.dir);
 
-////////////////////////////
-app.get('/', (req, res) => {
-  res.send('tour is waiting')
-})
-
-app.listen(port, () => {
-  console.log(`plane is waiting at ${port}`);
-})
+// Run the application
+initializeRoutes().catch(console.dir);
