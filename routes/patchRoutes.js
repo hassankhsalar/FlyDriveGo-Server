@@ -181,6 +181,23 @@ module.exports = (collections) => {
     const result = await userCollection.updateOne(filter, updatedDoc);
     res.send(result);
   });
+  app.patch("/users/:email", async (req, res) => {
+    const updateduser = req.body;
+    const email = req.params.email;
+  
+    const filter = { email: email };
+    const updatedDoc = {
+      $set: {
+        name: updateduser.name,
+        phoneNumber: updateduser.phoneNumber,
+        gender: updateduser.gender,
+        dateOfBirth: updateduser.dateOfBirth,
+      },
+    };
+  
+    const result = await userCollection.updateOne(filter, updatedDoc);
+    res.send(result);
+  });
 
   // UPDATE TOUR PACKAGE
   router.patch("/tourPackage/:id", async (req, res) => {
