@@ -1,26 +1,31 @@
 const express = require("express");
 
-module.exports = (collections) => {
+module.exports = function ({
+  jobsCollection,
+  applicationsCollection,
+  sellersCollection,
+  visaApplicationsCollection,
+  allProductsCollection,
+  cartCollection,
+  userCollection,
+  trasportationCars,
+  transportationBusOptions,
+  transportationBusTestimonials,
+  busesCollection,
+  busSeatsCollection,
+  busBookingsCollection,
+  carBookingsCollection,
+  ObjectId,
+}) {
+  const express = require("express");
   const router = express.Router();
-  const {
-    jobsCollection,
-    applicationsCollection,
-    sellersCollection,
-    visaApplicationsCollection,
-    allProductsCollection,
-    cartCollection,
-    userCollection,
-    tourPackCollection,
-    trasportationCars,
-    transportationBusOptions,
-    transportationBusTestimonials,
-  } = collections;
 
   // GET ALL JOBS
   router.get("/jobs", async (req, res) => {
     try {
-      const jobs = await jobsCollection.find({}).toArray();
-      res.status(200).json(jobs);
+      const cursor = jobsCollection.find({});
+      const jobs = await cursor.toArray();
+      res.send(jobs);
     } catch (error) {
       console.error("Error fetching jobs:", error);
       res.status(500).send("Internal Server Error");
@@ -47,7 +52,8 @@ module.exports = (collections) => {
   // GET ALL APPLICATIONS
   router.get("/job-applications", async (req, res) => {
     try {
-      const applications = await applicationsCollection.find({}).toArray();
+      const cursor = applicationsCollection.find({});
+      const applications = await cursor.toArray();
       res.send(applications);
     } catch (error) {
       console.error("Error fetching job applications:", error);
@@ -69,7 +75,7 @@ module.exports = (collections) => {
     }
   });
 
-  // GET ALL VISA APPLICATIONS
+  // GET all visa applications
   router.get("/visa-applications", async (req, res) => {
     try {
       const { email } = req.query;
@@ -87,11 +93,10 @@ module.exports = (collections) => {
     }
   });
 
-  // GET A SINGLE VISA APPLICATION BY ID
+  // GET a single visa application by ID
   router.get("/visa-applications/:id", async (req, res) => {
     try {
       const id = req.params.id;
-      const { ObjectId } = require("mongodb");
       const application = await visaApplicationsCollection.findOne({
         _id: new ObjectId(id),
       });
@@ -105,30 +110,7 @@ module.exports = (collections) => {
     }
   });
 
-  // GET ALL PRODUCTS
-  router.get("/products", async (req, res) => {
-    const { search, tags } = req.query;
-    const filters = {};
-    if (search) {
-      filters.title = { $regex: search, $options: "i" };
-    }
-    if (tags) {
-      const tagsArray = Array.isArray(tags) ? tags : tags.split(",");
-      filters.tags = { $in: tagsArray };
-    }
-    const result = await allProductsCollection.find(filters).toArray();
-    res.send(result);
-  });
-
-  // GET CARTS
-  router.get("/carts", async (req, res) => {
-    const email = req.query.email;
-    const query = { email: email };
-    const result = await cartCollection.find(query).toArray();
-    res.send(result);
-  });
-
-  // GET USERS
+  // GET users
   router.get("/users", async (req, res) => {
     const email = req.query.email;
     if (!email) {
@@ -139,16 +121,16 @@ module.exports = (collections) => {
     res.send(result);
   });
 
-  // GET ALL USERS
   router.get("/allUsers", async (req, res) => {
     const result = await userCollection.find().toArray();
     res.send(result);
   });
 
-  // GET USER ROLE
+  // userRole api
   router.get("/users/role/:email", async (req, res) => {
     const email = req.params.email;
     const user = await userCollection.findOne({ email });
+
     if (user) {
       res.json({ userType: user.userType });
     } else {
@@ -156,7 +138,31 @@ module.exports = (collections) => {
     }
   });
 
-  // GET SELLER PRODUCTS
+  // Get All Api for Product
+  router.get("/products", async (req, res) => {
+    const { search, tags, publisher } = req.query;
+    const filters = {};
+    if (search) {
+      filters.title = { $regex: search, $options: "i" };
+    }
+
+    if (tags) {
+      const tagsArray = Array.isArray(tags) ? tags : tags.split(",");
+      filters.tags = { $in: tagsArray };
+    }
+    const result = await allProductsCollection.find(filters).toArray();
+    res.send(result);
+  });
+
+  // Cart API
+  router.get("/carts", async (req, res) => {
+    const email = req.query.email;
+    const query = { email: email };
+    const result = await cartCollection.find(query).toArray();
+    res.send(result);
+  });
+
+  // Get Product By Email
   router.get("/sellerProduct/:email", async (req, res) => {
     const email = req.params.email;
     const query = { sellerEmail: email };
@@ -164,14 +170,14 @@ module.exports = (collections) => {
     res.send(result);
   });
 
-  // GET ALL TRANSPORTATION CARS
+  // get all transportation cars
   router.get("/transportation-cars", async (req, res) => {
     const query = {};
     const result = await trasportationCars.find(query).toArray();
     res.send(result);
   });
 
-  // GET ALL BUS TESTIMONIALS
+  // Get all bus testimonials
   router.get("/transportation-bus-testimonials", async (req, res) => {
     try {
       const query = {};
@@ -183,7 +189,7 @@ module.exports = (collections) => {
     }
   });
 
-  // GET ALL BUS OPTIONS
+  // Get all bus options
   router.get("/transportation-bus-options", async (req, res) => {
     try {
       const query = {};
@@ -195,7 +201,190 @@ module.exports = (collections) => {
     }
   });
 
-  // GET ALL SELLERS
+  // Get all buses with filter options
+  router.get("/buses", async (req, res) => {
+    try {
+      const { date, from, to, category, sort } = req.query;
+      const filter = {};
+
+      if (from) filter.departureLocation = { $regex: from, $options: "i" };
+      if (to) filter.arrivalLocation = { $regex: to, $options: "i" };
+      if (date) filter.availableDates = { $elemMatch: { $eq: date } };
+      if (category && category !== "all") filter.category = category;
+
+      let sortOption = {};
+      if (sort === "price-low") {
+        sortOption = { price: 1 };
+      } else if (sort === "price-high") {
+        sortOption = { price: -1 };
+      } else if (sort === "duration") {
+        sortOption = { durationMinutes: 1 };
+      } else if (sort === "departure") {
+        sortOption = { departureTime: 1 };
+      }
+
+      const buses = await busesCollection
+        .find(filter)
+        .sort(sortOption)
+        .toArray();
+      res.status(200).json(buses);
+    } catch (error) {
+      console.error("Error fetching buses:", error);
+      res.status(500).json({ error: "Failed to fetch buses" });
+    }
+  });
+
+  // Get bus by ID
+  router.get("/buses/:id", async (req, res) => {
+    try {
+      const id = req.params.id;
+      let bus;
+
+      if (ObjectId.isValid(id)) {
+        bus = await busesCollection.findOne({ _id: new ObjectId(id) });
+      }
+
+      if (!bus) {
+        bus = await busesCollection.findOne({ id: parseInt(id) });
+      }
+
+      if (!bus) {
+        return res.status(404).json({ error: "Bus not found" });
+      }
+
+      res.status(200).json(bus);
+    } catch (error) {
+      console.error("Error fetching bus details:", error);
+      res.status(500).json({ error: "Failed to fetch bus details" });
+    }
+  });
+
+  // Get seat layout for a specific bus on a specific date
+  router.get("/buses/:id/seats", async (req, res) => {
+    try {
+      const busId = req.params.id;
+      const { date } = req.query;
+
+      if (!date) {
+        return res.status(400).json({ error: "Date parameter is required" });
+      }
+
+      let bus;
+      if (ObjectId.isValid(busId)) {
+        bus = await busesCollection.findOne({ _id: new ObjectId(busId) });
+      }
+
+      if (!bus) {
+        bus = await busesCollection.findOne({ id: parseInt(busId) });
+      }
+
+      if (!bus) {
+        return res.status(404).json({ error: "Bus not found" });
+      }
+
+      let query = {};
+      if (ObjectId.isValid(busId)) {
+        query.busId = new ObjectId(busId);
+      } else {
+        query.busId = parseInt(busId);
+      }
+      query.date = date;
+
+      const seatLayout = await busSeatsCollection.findOne(query);
+
+      if (seatLayout) {
+        return res.status(200).json(seatLayout);
+      }
+
+      const newSeatLayout = generateDefaultSeatLayout(bus, date);
+
+      res.status(200).json(newSeatLayout);
+    } catch (error) {
+      console.error("Error fetching seat layout:", error);
+      res.status(500).json({ error: "Failed to fetch seat layout" });
+    }
+  });
+
+  // Get booking details
+  router.get("/bus-bookings/:id", async (req, res) => {
+    try {
+      const { id } = req.params;
+      const { reference, email } = req.query;
+
+      let booking;
+
+      if (id !== "find") {
+        if (ObjectId.isValid(id)) {
+          booking = await busBookingsCollection.findOne({
+            _id: new ObjectId(id),
+          });
+        }
+      } else if (reference) {
+        booking = await busBookingsCollection.findOne({
+          bookingReference: reference,
+        });
+
+        if (!booking && email) {
+          booking = await busBookingsCollection.findOne({
+            bookingReference: reference,
+            "contactInfo.email": email,
+          });
+        }
+      } else {
+        return res.status(400).json({ error: "Invalid search parameters" });
+      }
+
+      if (!booking) {
+        return res.status(404).json({ error: "Booking not found" });
+      }
+
+      res.status(200).json(booking);
+    } catch (error) {
+      console.error("Error fetching booking:", error);
+      res.status(500).json({ error: "Failed to fetch booking details" });
+    }
+  });
+
+  // Get car booking details
+  router.get("/car-bookings/:id", async (req, res) => {
+    try {
+      const { id } = req.params;
+      const { reference, email } = req.query;
+
+      let booking;
+
+      if (id !== "find") {
+        if (ObjectId.isValid(id)) {
+          booking = await carBookingsCollection.findOne({
+            _id: new ObjectId(id),
+          });
+        }
+      } else if (reference) {
+        booking = await carBookingsCollection.findOne({
+          bookingReference: reference,
+        });
+
+        if (!booking && email) {
+          booking = await carBookingsCollection.findOne({
+            bookingReference: reference,
+            "contactInfo.email": email,
+          });
+        }
+      } else {
+        return res.status(400).json({ error: "Invalid search parameters" });
+      }
+
+      if (!booking) {
+        return res.status(404).json({ error: "Booking not found" });
+      }
+
+      res.status(200).json(booking);
+    } catch (error) {
+      console.error("Error fetching car booking:", error);
+      res.status(500).json({ error: "Failed to fetch booking details" });
+    }
+  });
+
   router.get("/becomeseller", async (req, res) => {
     const result = await sellersCollection.find().toArray();
     res.send(result);
