@@ -1,23 +1,24 @@
-const express = require("express");
-
-module.exports = (collections) => {
+module.exports = function ({
+  jobsCollection,
+  cartCollection,
+  userCollection,
+  tourPackCollection,
+  allProductsCollection,
+  ObjectId,
+}) {
+  const express = require("express");
   const router = express.Router();
-  const {
-    jobsCollection,
-    cartCollection,
-    userCollection,
-    tourPackCollection,
-    allProductsCollection,
-  } = collections;
 
   // DELETE JOB
   router.delete("/jobs/:id", async (req, res) => {
     try {
       const id = parseInt(req.params.id);
       const result = await jobsCollection.deleteOne({ id });
+
       if (result.deletedCount === 0) {
         return res.status(404).send("Job not found");
       }
+
       res.send(result);
     } catch (error) {
       console.error("Error deleting job:", error);
@@ -25,37 +26,33 @@ module.exports = (collections) => {
     }
   });
 
-  // DELETE CART ITEM
-  router.delete("/carts/:id", async (req, res) => {
-    const id = req.params.id;
-    const { ObjectId } = require("mongodb");
-    const query = { _id: new ObjectId(id) };
-    const result = await cartCollection.deleteOne(query);
-    res.send(result);
-  });
-
-  // DELETE USER
+  // user delete
   router.delete("/users/:id", async (req, res) => {
     const id = req.params.id;
-    const { ObjectId } = require("mongodb");
     const query = { _id: new ObjectId(id) };
     const result = await userCollection.deleteOne(query);
     res.send(result);
   });
 
-  // DELETE TOUR PACKAGE
+  // Tour Package
   router.delete("/tourPackage/:id", async (req, res) => {
     const id = req.params.id;
-    const { ObjectId } = require("mongodb");
     const query = { _id: new ObjectId(id) };
     const result = await tourPackCollection.deleteOne(query);
     res.send(result);
   });
 
-  // DELETE PRODUCT
+  // Cart
+  router.delete("/carts/:id", async (req, res) => {
+    const id = req.params.id;
+    const query = { _id: new ObjectId(id) };
+    const result = await cartCollection.deleteOne(query);
+    res.send(result);
+  });
+
+  // Delete Product
   router.delete("/deleteProduct/:id", async (req, res) => {
     const id = req.params.id;
-    const { ObjectId } = require("mongodb");
     const query = { _id: new ObjectId(id) };
     const result = await allProductsCollection.deleteOne(query);
     res.send(result);
