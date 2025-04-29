@@ -351,8 +351,6 @@ async function run() {
             column: colPosition + 1,
             side: colPosition < 2 ? "left" : "right",
           },
-            side: colPosition < 2 ? "left" : "right",
-          },
         });
       }
       return {
@@ -361,7 +359,6 @@ async function run() {
         date,
         seats,
         createdAt: new Date(),
-        updatedAt: new Date(),
         updatedAt: new Date(),
       };
     }
@@ -382,7 +379,7 @@ async function run() {
       sellersCollection,
       visaApplicationsCollection,
       allProductsCollection,
-
+    
       cartCollection,
       userCollection,
       tourPackCollection,
@@ -392,7 +389,8 @@ async function run() {
       busesCollection,
       busSeatsCollection,
       busBookingsCollection,
-      // carBookingsCollection,
+      carBookingsCollection, // Uncommented, assuming it's defined
+    
       cloudinary,
       upload,
       stripe,
@@ -401,29 +399,14 @@ async function run() {
       generateDefaultSeatLayout,
       generateCarBookingReference,
     };
+    
+    // Use routes
+    app.use(getRoutes(routeDependencies));
+    app.use(postRoutes(routeDependencies));
+    app.use(deleteRoutes(routeDependencies));
+    app.use(patchRoutes(routeDependencies));
+    app.use(putRoutes(routeDependencies));
 
-    // Stripe Payment
-    app.post("/create-payment-intent", async(req, res)=>{
-      const {price}= req.body;
-      const amount = parseInt(price*100);
-      
-
-      const paymentIntent = await stripe.paymentIntents.create({
-        amount: amount,
-        currency: "usd",
-        payment_method_types: ['card']
-      });
-      res.send({
-        clientSecret: paymentIntent.client_secret
-      })
-    })
-
-
-
-    ///API Code Above////
-
-    // Send a ping to confirm a successful connection
-    // await client.db("admin").command({ ping: 1 });
     console.log(
       "Pinged your deployment. You successfully connected to MongoDB!"
     );
