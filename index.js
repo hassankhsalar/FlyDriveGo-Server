@@ -2,12 +2,32 @@ const express = require("express");
 const app = express();
 const cors = require("cors");
 require("dotenv").config();
+const stripe = require("stripe")(process.env.STRIPE_SK);
 const stripe = require('stripe')(process.env.STRIPE_SK);
 const multer = require("multer");
 const axios = require("axios");
 const cloudinary = require("cloudinary").v2;
 const port = process.env.PORT || 5000;
 
+// Import routes
+const getRoutes = require("./routes/getRoutes");
+const postRoutes = require("./routes/postRoutes");
+const deleteRoutes = require("./routes/deleteRoutes");
+const patchRoutes = require("./routes/patchRoutes");
+const putRoutes = require("./routes/putRoutes");
+
+// Middleware
+app.use(
+  cors({
+    origin: [
+      "http://localhost:5000",
+      "http://localhost:5173",
+      "https://flydrivego.netlify.app",
+      "https://your-vercel-backend.vercel.app",
+    ],
+    methods: ["GET", "POST", "PUT", "DELETE", "PATCH"],
+  })
+);
 //middleware
 
 app.use(cors({
@@ -271,399 +291,28 @@ async function run() {
     });
 
     // TransportationBusTestimonials collection
+    const trasportationCars = client
+      .db("FlyDriveGo")
+      .collection("TrasportationCars");
+    const transportationBusOptions = client
+      .db("FlyDriveGo")
+      .collection("transportationBusOptions");
     const transportationBusTestimonials = client
       .db("FlyDriveGo")
       .collection("TransportationBusTestimonials");
     const busesCollection = client.db("FlyDriveGo").collection("buses");
     const busSeatsCollection = client.db("FlyDriveGo").collection("busSeats");
-    const busBookingsCollection = client.db("FlyDriveGo").collection("busBookings");
-
-    // Get all buses with filter options
-    app.get("/buses", async (req, res) => {
-      try {
-        const { date, from, to, category, sort } = req.query;
-        const filter = {};
-
-        // Apply filters if provided
-        if (from) filter.departureLocation = { $regex: from, $options: 'i' };
-        if (to) filter.arrivalLocation = { $regex: to, $options: 'i' };
-        if (date) filter.availableDates = { $elemMatch: { $eq: date } };
-        if (category && category !== 'all') filter.category = category;
-
-        // Sort options
-        let sortOption = {};
-        if (sort === "price-low") {
-          sortOption = { price: 1 };
-        } else if (sort === "price-high") {
-          sortOption = { price: -1 };
-        } else if (sort === "duration") {
-          sortOption = { durationMinutes: 1 };
-        } else if (sort === "departure") {
-          sortOption = { departureTime: 1 };
-        }
-
-        const buses = await busesCollection.find(filter).sort(sortOption).toArray();
-        res.status(200).json(buses);
-      } catch (error) {
-        console.error("Error fetching buses:", error);
-        res.status(500).json({ error: "Failed to fetch buses" });
-      }
-    });
-
-    // Get bus by ID
-    app.get("/buses/:id", async (req, res) => {
-      try {
-        const id = req.params.id;
-        let bus;
-
-        // Try to find by ObjectId first, then by numeric id
-        if (ObjectId.isValid(id)) {
-          bus = await busesCollection.findOne({ _id: new ObjectId(id) });
-        }
-
-        // If not found by ObjectId, try with numeric id
-        if (!bus) {
-          bus = await busesCollection.findOne({ id: parseInt(id) });
-        }
-
-        if (!bus) {
-          return res.status(404).json({ error: "Bus not found" });
-        }
-
-        res.status(200).json(bus);
-      } catch (error) {
-        console.error("Error fetching bus details:", error);
-        res.status(500).json({ error: "Failed to fetch bus details" });
-      }
-    });
-
-    // Get seat layout for a specific bus on a specific date
-    app.get("/buses/:id/seats", async (req, res) => {
-      try {
-        const busId = req.params.id;
-        const { date } = req.query;
-
-        if (!date) {
-          return res.status(400).json({ error: "Date parameter is required" });
-        }
-
-        // Find the bus first
-        let bus;
-        if (ObjectId.isValid(busId)) {
-          bus = await busesCollection.findOne({ _id: new ObjectId(busId) });
-        }
-
-        if (!bus) {
-          bus = await busesCollection.findOne({ id: parseInt(busId) });
-        }
-
-        if (!bus) {
-          return res.status(404).json({ error: "Bus not found" });
-        }
-
-        // Check for existing seat layout for this date
-        let query = {};
-        if (ObjectId.isValid(busId)) {
-          query.busId = new ObjectId(busId);
-        } else {
-          query.busId = parseInt(busId);
-        }
-        query.date = date;
-
-        const seatLayout = await busSeatsCollection.findOne(query);
-
-        if (seatLayout) {
-          return res.status(200).json(seatLayout);
-        }
-
-        // If no seat layout exists for this date, create a new one
-        const newSeatLayout = generateDefaultSeatLayout(bus, date);
-
-        // Don't save it yet - just return the generated layout
-        // It will be saved when seats are actually booked
-        res.status(200).json(newSeatLayout);
-
-      } catch (error) {
-        console.error("Error fetching seat layout:", error);
-        res.status(500).json({ error: "Failed to fetch seat layout" });
-      }
-    });
-
-    // Reserve seats temporarily (for 10 minutes)
-    app.post("/buses/reserve-seats", async (req, res) => {
-      try {
-        const { busId, date, seatNumbers, sessionId } = req.body;
-
-        if (!busId || !date || !seatNumbers || !Array.isArray(seatNumbers) || !sessionId) {
-          return res.status(400).json({ error: "Invalid request parameters" });
-        }
-
-        // Find the bus to verify it exists
-        let bus;
-        if (ObjectId.isValid(busId)) {
-          bus = await busesCollection.findOne({ _id: new ObjectId(busId) });
-        } else {
-          bus = await busesCollection.findOne({ id: parseInt(busId) });
-        }
-
-        if (!bus) {
-          return res.status(404).json({ error: "Bus not found" });
-        }
-
-        // Find existing seat layout or create new one
-        let query = {};
-        if (ObjectId.isValid(busId)) {
-          query.busId = new ObjectId(busId);
-        } else {
-          query.busId = parseInt(busId);
-        }
-        query.date = date;
-
-        let seatLayout = await busSeatsCollection.findOne(query);
-
-        if (!seatLayout) {
-          // Create new seat layout
-          seatLayout = generateDefaultSeatLayout(bus, date);
-        }
-
-        // Check if seats are already booked or reserved by someone else
-        const unavailableSeats = [];
-        for (const seatNumber of seatNumbers) {
-          const seat = seatLayout.seats.find(s => s.seatNumber === parseInt(seatNumber));
-          if (!seat) {
-            unavailableSeats.push(seatNumber);
-            continue;
-          }
-
-          if (seat.status === 'booked') {
-            unavailableSeats.push(seatNumber);
-          } else if (seat.status === 'reserved' && seat.reservation?.sessionId !== sessionId) {
-            // Check if reservation is expired
-            const expiryTime = new Date(seat.reservation.expiryTime);
-            if (expiryTime > new Date()) {
-              // Reservation still valid
-              unavailableSeats.push(seatNumber);
-            }
-          }
-        }
-
-        if (unavailableSeats.length > 0) {
-          return res.status(400).json({
-            error: "Some seats are no longer available",
-            unavailableSeats
-          });
-        }
-
-        // Mark selected seats as reserved
-        const expiryTime = new Date();
-        expiryTime.setMinutes(expiryTime.getMinutes() + 10); // 10 minute reservation
-
-        // Update seat statuses
-        const updatedSeats = seatLayout.seats.map(seat => {
-          if (seatNumbers.includes(seat.seatNumber.toString())) {
-            return {
-              ...seat,
-              status: 'reserved',
-              reservation: {
-                sessionId,
-                expiryTime
-              }
-            };
-          }
-          return seat;
-        });
-
-        // Insert or update seat layout in database
-        if (seatLayout._id) {
-          // Update existing document
-          await busSeatsCollection.updateOne(
-            { _id: new ObjectId(seatLayout._id) },
-            { $set: { seats: updatedSeats, updatedAt: new Date() } }
-          );
-        } else {
-          // Insert new document
-          seatLayout.seats = updatedSeats;
-          seatLayout.createdAt = new Date();
-          seatLayout.updatedAt = new Date();
-          await busSeatsCollection.insertOne(seatLayout);
-        }
-
-        res.status(200).json({
-          success: true,
-          message: "Seats reserved successfully",
-          expiryTime
-        });
-
-      } catch (error) {
-        console.error("Error reserving seats:", error);
-        res.status(500).json({ error: "Failed to reserve seats" });
-      }
-    });
-
-    // Create bus booking with passenger details
-    app.post("/bus-bookings", async (req, res) => {
-      try {
-        const {
-          busId,
-          date,
-          seatNumbers,
-          sessionId,
-          contactInfo,
-          primaryPassenger,
-          totalPrice
-        } = req.body;
-
-        if (!busId || !date || !seatNumbers || !contactInfo || !primaryPassenger || !totalPrice) {
-          return res.status(400).json({ error: "Missing required booking information" });
-        }
-
-        // Verify bus exists
-        let bus;
-        if (ObjectId.isValid(busId)) {
-          bus = await busesCollection.findOne({ _id: new ObjectId(busId) });
-        } else {
-          bus = await busesCollection.findOne({ id: parseInt(busId) });
-        }
-
-        if (!bus) {
-          return res.status(404).json({ error: "Bus not found" });
-        }
-
-        // Find seat layout
-        let query = {};
-        if (ObjectId.isValid(busId)) {
-          query.busId = new ObjectId(busId);
-        } else {
-          query.busId = parseInt(busId);
-        }
-        query.date = date;
-
-        const seatLayout = await busSeatsCollection.findOne(query);
-
-        if (!seatLayout) {
-          return res.status(400).json({ error: "No seat layout found for this bus and date" });
-        }
-
-        // Verify seats are available or reserved for this session
-        const unavailableSeats = [];
-        for (const seatNumber of seatNumbers) {
-          const seat = seatLayout.seats.find(s => s.seatNumber === parseInt(seatNumber));
-          if (!seat) {
-            unavailableSeats.push(seatNumber);
-            continue;
-          }
-
-          if (seat.status === 'booked') {
-            unavailableSeats.push(seatNumber);
-          } else if (seat.status === 'reserved' && seat.reservation?.sessionId !== sessionId) {
-            // Check if reservation is expired
-            const expiryTime = new Date(seat.reservation.expiryTime);
-            if (expiryTime > new Date()) {
-              // Reservation still valid
-              unavailableSeats.push(seatNumber);
-            }
-          }
-        }
-
-        if (unavailableSeats.length > 0) {
-          return res.status(400).json({
-            error: "Some seats are no longer available",
-            unavailableSeats
-          });
-        }
-
-        // Generate booking reference number
-        const bookingReference = generateBookingReference();
-
-        // Create booking record
-        const bookingData = {
-          bookingReference,
-          busId: ObjectId.isValid(busId) ? new ObjectId(busId) : parseInt(busId),
-          busDetails: {
-            name: bus.name,
-            route: bus.route,
-            departureTime: bus.departureTime,
-            arrivalTime: bus.arrivalTime,
-          },
-          date,
-          seatNumbers: seatNumbers.map(s => parseInt(s)),
-          contactInfo,
-          primaryPassenger,
-          totalPrice,
-          status: 'confirmed',
-          paymentStatus: 'pending',
-          createdAt: new Date(),
-        };
-
-        const result = await busBookingsCollection.insertOne(bookingData);
-
-        // Update seats to booked status
-        const updatedSeats = seatLayout.seats.map(seat => {
-          if (seatNumbers.includes(seat.seatNumber.toString())) {
-            return {
-              ...seat,
-              status: 'booked',
-              bookingId: result.insertedId,
-              reservation: null
-            };
-          }
-          return seat;
-        });
-
-        await busSeatsCollection.updateOne(
-          { _id: seatLayout._id },
-          { $set: { seats: updatedSeats, updatedAt: new Date() } }
-        );
-
-        res.status(201).json({
-          success: true,
-          bookingId: result.insertedId,
-          bookingReference,
-          message: "Booking created successfully"
-        });
-
-      } catch (error) {
-        console.error("Error creating booking:", error);
-        res.status(500).json({ error: "Failed to create booking" });
-      }
-    });
-
-    // Get booking details
-    app.get("/bus-bookings/:id", async (req, res) => {
-      try {
-        const { id } = req.params;
-        const { reference, email } = req.query;
-
-        let booking;
-
-        if (id !== 'find') {
-          // Find by ID
-          if (ObjectId.isValid(id)) {
-            booking = await busBookingsCollection.findOne({ _id: new ObjectId(id) });
-          }
-        } else if (reference && email) {
-          // Find by reference and email
-          booking = await busBookingsCollection.findOne({
-            bookingReference: reference,
-            'contactInfo.email': email
-          });
-        } else {
-          return res.status(400).json({ error: "Invalid search parameters" });
-        }
-
-        if (!booking) {
-          return res.status(404).json({ error: "Booking not found" });
-        }
-
-        res.status(200).json(booking);
-      } catch (error) {
-        console.error("Error fetching booking:", error);
-        res.status(500).json({ error: "Failed to fetch booking details" });
-      }
-    });
+    const busBookingsCollection = client
+      .db("FlyDriveGo")
+      .collection("busBookings");
+    const carBookingsCollection = client
+      .db("FlyDriveGo")
+      .collection("carBookings");
 
     // Helper functions
     function generateBookingReference() {
+      const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+      let reference = "BUS";
       const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
       let reference = "BUS";
       for (let i = 0; i < 6; i++) {
@@ -687,16 +336,21 @@ async function run() {
         const rowNumber = Math.ceil(i / 4);
         const colPosition = (i - 1) % 4;
         const columns = ["A", "B", "C", "D"];
+        const columns = ["A", "B", "C", "D"];
         const seatLetter = columns[colPosition];
         seats.push({
           seatNumber: i,
           seatLabel: `${rowNumber}${seatLetter}`,
           status: "available",
           type: premiumSeats.includes(i) ? "premium" : "standard",
+          status: "available",
+          type: premiumSeats.includes(i) ? "premium" : "standard",
           price: premiumSeats.includes(i) ? bus.price * 1.3 : bus.price,
           position: {
             row: rowNumber,
             column: colPosition + 1,
+            side: colPosition < 2 ? "left" : "right",
+          },
             side: colPosition < 2 ? "left" : "right",
           },
         });
@@ -707,6 +361,7 @@ async function run() {
         date,
         seats,
         createdAt: new Date(),
+        updatedAt: new Date(),
         updatedAt: new Date(),
       };
     }
