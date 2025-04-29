@@ -3,6 +3,7 @@ const app = express();
 const cors = require("cors");
 require("dotenv").config();
 const stripe = require("stripe")(process.env.STRIPE_SK);
+const stripe = require('stripe')(process.env.STRIPE_SK);
 const multer = require("multer");
 const axios = require("axios");
 const cloudinary = require("cloudinary").v2;
@@ -27,6 +28,17 @@ app.use(
     methods: ["GET", "POST", "PUT", "DELETE", "PATCH"],
   })
 );
+//middleware
+
+app.use(cors({
+  origin: [
+    'http://localhost:3000',
+    'http://localhost:5173',
+    'https://flydrivego.netlify.app',
+    'https://your-vercel-backend.vercel.app'
+  ],
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH'],
+}))
 
 app.use(express.json());
 
@@ -77,6 +89,208 @@ async function run() {
     const tourPackCollection = client
       .db("FlyDriveGo")
       .collection("TourPackage");
+
+    // ===== User Api ======///////
+
+    app.post("/users", async (req, res) => {
+      const user = req.body;
+      const query = { email: user.email };
+      const existingUser = await userCollection.findOne(query);
+      if (existingUser) {
+        return res.send({ message: "user already exists", insertedId: null });
+      }
+      const result = await userCollection.insertOne(user);
+      res.send(result);
+    });
+
+    app.get("/users", async (req, res) => {
+      const email = req.query.email;
+      if (!email) {
+        return res.status(400).send({ message: "Email is Needed" });
+      }
+      const filter = { email };
+      const result = await userCollection.find(filter).toArray();
+      res.send(result);
+    });
+
+    app.get("/allUsers", async (req, res) => {
+      const result = await userCollection.find().toArray();
+      res.send(result);
+    });
+
+    // userRole api
+    app.get("/users/role/:email", async (req, res) => {
+      const email = req.params.email;
+      const user = await userCollection.findOne({ email });
+
+      if (user) {
+        res.json({ userType: user.userType });
+      } else {
+        res.status(404).json({ error: "User not found" });
+      }
+    });
+
+    // Moderator: make seller
+    app.patch("/users/moderator/:id", async (req, res) => {
+      const id = req.params.id;
+      const filter = { _id: new ObjectId(id) };
+      const updatedDoc = {
+        $set: {
+          userType: "seller",
+        },
+      };
+      const result = await userCollection.updateOne(filter, updatedDoc);
+      res.send(result);
+    });
+
+    // user delete
+    app.delete("/users/:id", async (req, res) => {
+      const id = req.params.id;
+      const query = { _id: new ObjectId(id) };
+      const result = await userCollection.deleteOne(query);
+      res.send(result);
+    });
+
+    // Tour Package Related api//
+    app.get("/tourPackage", async (req, res) => {
+      const result = await tourPackCollection.find({}).toArray();
+      res.send(result);
+    });
+    
+    app.post("/tourPackage", async (req, res) => {
+      const data = req.body;
+      const result = await tourPackCollection.insertOne(data);
+      res.send(result);
+    });
+
+    app.patch("/tourPackage/:id", async (req, res) => {
+      const { title } = req.body;
+      const id = req.params.id;
+      const filter = { _id: new ObjectId(id) };
+      const updatedDoc = {
+        $set: {
+          title: title,
+        },
+      };
+      const result = await tourPackCollection.updateOne(filter, updatedDoc);
+      res.send(result);
+    });
+
+    app.delete("/tourPackage/:id", async (req, res) => {
+      const id = req.params.id;
+      const query = { _id: new ObjectId(id) };
+      const result = await tourPackCollection.deleteOne(query);
+      res.send(result);
+    });
+
+    //===========--------- SEllER APIS ------------===============
+
+    // Get All Api for Product
+    app.get("/products", async (req, res) => {
+      const { search, tags, publisher } = req.query;
+      const filters = {};
+      if (search) {
+        filters.title = { $regex: search, $options: "i" };
+      }
+
+      if (tags) {
+        const tagsArray = Array.isArray(tags) ? tags : tags.split(",");
+        filters.tags = { $in: tagsArray };
+      }
+      const result = await allProductsCollection.find(filters).toArray();
+      res.send(result);
+    });
+
+    // Add product apis
+    app.post("/addProducts", async (req, res) => {
+      const productsData = req.body;
+      console.log("Received product data:", productsData);
+      const result = await allProductsCollection.insertOne(productsData);
+      res.status(201).send(result);
+    });
+
+    // for products detail
+    app.get('/products/:id', async (req, res) => {
+      try {
+        const id = req.params.id;
+        const product = await allProductsCollection.findOne({ _id: new ObjectId(id) });
+        if (!product) {
+          return res.status(404).json({ message: 'Product not found' });
+        }
+        res.json(product); // ✅ Send the product data correctly
+      } catch (error) {
+        console.error(error);
+        res.status(500).json({ message: 'Internal Server Error' });
+      }
+    });
+
+    // Cart  API
+    app.get("/carts", async (req, res) => {
+      const email = req.query.email;
+      const query = { email: email };
+      const result = await cartCollection.find(query).toArray();
+      res.send(result);
+    });
+
+
+    app.post("/carts", async (req, res) => {
+      const cartItem = req.body;
+      const result = await cartCollection.insertOne(cartItem);
+      res.send(result);
+    });
+
+    app.delete("/carts/:id", async (req, res) => {
+      const id = req.params.id;
+      const query = { _id: new ObjectId(id) };
+      const result = await cartCollection.deleteOne(query);
+      res.send(result);
+    });
+
+    // Get Product By Email
+    app.get("/sellerProduct/:email", async (req, res) => {
+      const email = req.params.email;
+      const query = { sellerEmail: email };
+      const result = await allProductsCollection.find(query).toArray();
+      res.send(result);
+    });
+
+    // Update Products
+    app.put("/updateProduct/:id", async (req, res) => {
+      const id = req.params.id;
+      const updatedData = req.body;
+      const result = await allProductsCollection.updateOne(
+        { _id: new ObjectId(id) },
+        { $set: updatedData }
+      );
+      res.send(result);
+    });
+
+    // Delete Product
+    app.delete("/deleteProduct/:id", async (req, res) => {
+      const id = req.params.id;
+      const query = { _id: new ObjectId(id) };
+      const result = await allProductsCollection.deleteOne(query);
+      res.send(result);
+    });
+
+    //=======Transportation API=======//
+    //=======Transportation API=======//
+    //=======Transportation API=======//
+    // all transportation collection
+
+    const trasportationCars = client.db("FlyDriveGo").collection("TrasportationCars");
+    const transportationBusOptions = client.db("FlyDriveGo").collection("transportationBusOptions");
+
+
+
+    // get all transportation cars
+    app.get("/transportation-cars", async (req, res) => {
+      const query = {};
+      const result = await trasportationCars.find(query).toArray();
+      res.send(result);
+    });
+
+    // TransportationBusTestimonials collection
     const trasportationCars = client
       .db("FlyDriveGo")
       .collection("TrasportationCars");
@@ -97,6 +311,8 @@ async function run() {
 
     // Helper functions
     function generateBookingReference() {
+      const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+      let reference = "BUS";
       const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
       let reference = "BUS";
       for (let i = 0; i < 6; i++) {
@@ -120,10 +336,13 @@ async function run() {
         const rowNumber = Math.ceil(i / 4);
         const colPosition = (i - 1) % 4;
         const columns = ["A", "B", "C", "D"];
+        const columns = ["A", "B", "C", "D"];
         const seatLetter = columns[colPosition];
         seats.push({
           seatNumber: i,
           seatLabel: `${rowNumber}${seatLetter}`,
+          status: "available",
+          type: premiumSeats.includes(i) ? "premium" : "standard",
           status: "available",
           type: premiumSeats.includes(i) ? "premium" : "standard",
           price: premiumSeats.includes(i) ? bus.price * 1.3 : bus.price,
@@ -160,7 +379,7 @@ async function run() {
       sellersCollection,
       visaApplicationsCollection,
       allProductsCollection,
-
+    
       cartCollection,
       userCollection,
       tourPackCollection,
@@ -170,7 +389,8 @@ async function run() {
       busesCollection,
       busSeatsCollection,
       busBookingsCollection,
-      carBookingsCollection,
+      carBookingsCollection, // Uncommented, assuming it's defined
+    
       cloudinary,
       upload,
       stripe,
@@ -179,7 +399,7 @@ async function run() {
       generateDefaultSeatLayout,
       generateCarBookingReference,
     };
-
+    
     // Use routes
     app.use(getRoutes(routeDependencies));
     app.use(postRoutes(routeDependencies));
