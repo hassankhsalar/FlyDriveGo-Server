@@ -796,6 +796,11 @@ async function run() {
       ///////////////////////////////
 
     // Tour Package Related api//
+    app.get("/tourPackage", async (req, res) => {
+      const result = await tourPackCollection.find({}).toArray();
+      res.send(result);
+    });
+    
     app.post("/tourPackage", async (req, res) => {
       const data = req.body;
       const result = await tourPackCollection.insertOne(data);
@@ -876,6 +881,21 @@ async function run() {
       const query = { sellerEmail: email };
       const result = await allProductsCollection.find(query).toArray();
       res.send(result);
+    });
+
+    //get product by id
+    app.get('/products/:id', async (req, res) => {
+      try {
+        const id = req.params.id;
+        const product = await allProductsCollection.findOne({ _id: new ObjectId(id) });
+        if (!product) {
+          return res.status(404).json({ message: 'Product not found' });
+        }
+        res.json(product); // ✅ Send the product data correctly
+      } catch (error) {
+        console.error(error);
+        res.status(500).json({ message: 'Internal Server Error' });
+      }
     });
 
     // Update Products
