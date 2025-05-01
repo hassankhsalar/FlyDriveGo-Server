@@ -559,7 +559,6 @@ module.exports = function ({
 
       res.status(200).json({
         success: true,
-        message: `Cleaned up ${cleanupCount} expired seat reservations`,
       });
     } catch (error) {
       console.error("Error cleaning up reservations:", error);
@@ -889,7 +888,6 @@ module.exports = function ({
 
       res.status(200).json({
         success: true,
-        message: `Cleaned up ${cleanupCount} expired flight seat reservations`,
       });
     } catch (error) {
       console.error("Error cleaning up flight reservations:", error);
