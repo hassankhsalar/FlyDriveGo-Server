@@ -95,6 +95,14 @@ async function run() {
       .db("FlyDriveGo")
       .collection("carBookings");
 
+    // New collections for flight booking
+    const flightsCollection = client.db("FlyDriveGo").collection("flights");
+    const flightSeatsCollection = client.db("FlyDriveGo").collection("flightSeats");
+    const flightBookingsCollection = client.db("FlyDriveGo").collection("flightBookings");
+    const flightTestimonialsCollection = client.db("FlyDriveGo").collection("flightTestimonials");
+    const airlinesCollection = client.db("FlyDriveGo").collection("airlines");
+    const flightFAQsCollection = client.db("FlyDriveGo").collection("flightFAQs");
+
     // Helper functions
     function generateBookingReference() {
       const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
@@ -153,6 +161,110 @@ async function run() {
       return reference;
     }
 
+    // Flight helper functions
+    function generateFlightBookingReference() {
+      const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+      let reference = "AIR";
+      for (let i = 0; i < 6; i++) {
+        reference += chars.charAt(Math.floor(Math.random() * chars.length));
+      }
+      return reference;
+    }
+
+    function generateDefaultFlightSeatLayout(flight, date) {
+      const totalSeats = flight.totalSeats || 120;
+
+      // Different sections in the aircraft
+      const firstClassSeats = Math.floor(totalSeats * 0.1); // 10% first class
+      const businessClassSeats = Math.floor(totalSeats * 0.2); // 20% business class
+      const economyClassSeats = totalSeats - firstClassSeats - businessClassSeats; // 70% economy
+
+      const seats = [];
+      let seatNumber = 1;
+
+      // First class section (2-2 configuration)
+      const firstClassRows = Math.ceil(firstClassSeats / 4);
+      for (let row = 1; row <= firstClassRows; row++) {
+        for (let col = 0; col < 4; col++) {
+          // Skip middle seats in first class (2-2 configuration)
+          if (col === 1 || col === 2) {
+            const columns = ["A", "B", "E", "F"];
+            const seatLetter = columns[col];
+            seats.push({
+              seatNumber: seatNumber++,
+              seatLabel: `${row}${seatLetter}`,
+              status: "available",
+              type: "first",
+              price: flight.price * 2.5, // First class premium
+              position: {
+                row: row,
+                column: col + 1,
+                side: col < 2 ? "left" : "right",
+                section: "first"
+              },
+            });
+          }
+        }
+      }
+
+      // Business class section (2-3-2 configuration)
+      const businessClassRows = Math.ceil(businessClassSeats / 7);
+      for (let row = firstClassRows + 1; row <= firstClassRows + businessClassRows; row++) {
+        for (let col = 0; col < 7; col++) {
+          const columns = ["A", "B", "C", "D", "E", "F", "G"];
+          const seatLetter = columns[col];
+          seats.push({
+            seatNumber: seatNumber++,
+            seatLabel: `${row}${seatLetter}`,
+            status: "available",
+            type: "business",
+            price: flight.price * 1.5, // Business class premium
+            position: {
+              row: row,
+              column: col + 1,
+              side: col < 3 ? "left" : col > 3 ? "right" : "middle",
+              section: "business"
+            },
+          });
+        }
+      }
+
+      // Economy class section (3-3-3 configuration)
+      const economyClassRows = Math.ceil(economyClassSeats / 9);
+      for (let row = firstClassRows + businessClassRows + 1; row <= firstClassRows + businessClassRows + economyClassRows; row++) {
+        for (let col = 0; col < 9; col++) {
+          const columns = ["A", "B", "C", "D", "E", "F", "G", "H", "J"];
+          const seatLetter = columns[col];
+
+          // Determine if this is a premium economy seat (first few rows of economy)
+          const isPremiumEconomy = row <= firstClassRows + businessClassRows + 2;
+
+          seats.push({
+            seatNumber: seatNumber++,
+            seatLabel: `${row}${seatLetter}`,
+            status: "available",
+            type: isPremiumEconomy ? "premium-economy" : "economy",
+            price: isPremiumEconomy ? flight.price * 1.2 : flight.price,
+            position: {
+              row: row,
+              column: col + 1,
+              side: col < 3 ? "left" : col > 5 ? "right" : "middle",
+              section: isPremiumEconomy ? "premium-economy" : "economy"
+            },
+          });
+        }
+      }
+
+      return {
+        flightId: flight._id || flight.id,
+        flightName: flight.name,
+        date,
+        seats,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      };
+    }
+
     // Pass collections and helper functions to routes
     const routeDependencies = {
       jobsCollection,
@@ -160,7 +272,6 @@ async function run() {
       sellersCollection,
       visaApplicationsCollection,
       allProductsCollection,
-
       cartCollection,
       userCollection,
       tourPackCollection,
@@ -171,6 +282,13 @@ async function run() {
       busSeatsCollection,
       busBookingsCollection,
       carBookingsCollection,
+      // Flight-related collections
+      flightsCollection,
+      flightSeatsCollection,
+      flightBookingsCollection,
+      flightTestimonialsCollection,
+      airlinesCollection,
+      flightFAQsCollection,
       cloudinary,
       upload,
       stripe,
@@ -178,6 +296,8 @@ async function run() {
       generateBookingReference,
       generateDefaultSeatLayout,
       generateCarBookingReference,
+      generateFlightBookingReference,
+      generateDefaultFlightSeatLayout,
     };
 
     // Use routes
