@@ -9,6 +9,7 @@ module.exports = function ({
   cartCollection,
   userCollection,
   tourPackCollection,
+  busesCollection,
   busSeatsCollection,
   busBookingsCollection,
   carBookingsCollection,
