@@ -65,6 +65,7 @@ async function run() {
     const busSeatsCollection = db.collection("busSeats");
     const busBookingsCollection = db.collection("busBookings");
     const carBookingsCollection = db.collection("carBookings");
+    const purchasedProductCollection = db.collection("purchasedProducts");
 
     // Helper functions
     function generateBookingReference() {
@@ -140,6 +141,7 @@ async function run() {
       busSeatsCollection,
       busBookingsCollection,
       carBookingsCollection,
+      purchasedProductCollection,
       cloudinary,
       upload,
       stripe,

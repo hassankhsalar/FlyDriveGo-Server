@@ -50,6 +50,21 @@ module.exports = function ({
     res.send(result);
   });
 
+  router.delete("/carts", async (req, res) => {
+    try {
+      const email = req.query.email;
+      if (!email) {
+        return res.status(400).send("Email is required");
+      }
+  
+      const result = await cartCollection.deleteMany({ email });
+      res.send({ success: true, deletedCount: result.deletedCount });
+    } catch (error) {
+      console.error("Error clearing cart:", error);
+      res.status(500).send("Internal Server Error");
+    }
+  });
+  
   // Delete Product
   router.delete("/deleteProduct/:id", async (req, res) => {
     const id = req.params.id;
