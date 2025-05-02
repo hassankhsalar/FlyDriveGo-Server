@@ -160,7 +160,6 @@ async function run() {
       sellersCollection,
       visaApplicationsCollection,
       allProductsCollection,
-
       cartCollection,
       userCollection,
       tourPackCollection,
