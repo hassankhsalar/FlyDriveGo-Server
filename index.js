@@ -4,16 +4,9 @@ const cors = require("cors");
 require("dotenv").config();
 const stripe = require("stripe")(process.env.STRIPE_SK);
 const multer = require("multer");
-const axios = require("axios");
 const cloudinary = require("cloudinary").v2;
 const port = process.env.PORT || 5000;
-
-// Import routes
-const getRoutes = require("./routes/getRoutes");
-const postRoutes = require("./routes/postRoutes");
-const deleteRoutes = require("./routes/deleteRoutes");
-const patchRoutes = require("./routes/patchRoutes");
-const putRoutes = require("./routes/putRoutes");
+const { MongoClient, ServerApiVersion, ObjectId } = require("mongodb");
 
 // Middleware
 app.use(
@@ -32,76 +25,58 @@ app.use(express.json());
 
 // Configure Cloudinary
 cloudinary.config({
-  cloud_name: `${process.env.CLOUDINARY_CLOUD_NAME}`,
-  api_key: `${process.env.CLOUDINARY_API_KEY}`,
-  api_secret: `${process.env.CLOUDINARY_API_SECRET}`,
+  cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
+  api_key: process.env.CLOUDINARY_API_KEY,
+  api_secret: process.env.CLOUDINARY_API_SECRET,
 });
 
-// Configure Multer for handling file uploads
+// Multer config
 const storage = multer.memoryStorage();
-const upload = multer({
-  storage,
-  limits: { fileSize: 5 * 1024 * 1024 }, // 5MB limit
-});
+const upload = multer({ storage, limits: { fileSize: 5 * 1024 * 1024 } }); // 5MB
 
-const { MongoClient, ServerApiVersion, ObjectId } = require("mongodb");
+// MongoDB connection
 const uri = `mongodb+srv://${process.env.DB_USER}:${process.env.DB_PASS}@cluster0.c9iiq.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0`;
-
-// Create a MongoClient with a MongoClientOptions object to set the Stable API version
 const client = new MongoClient(uri, {
-  serverApi: {
-    version: ServerApiVersion.v1,
-    strict: true,
-    deprecationErrors: true,
-  },
+  serverApi: { version: ServerApiVersion.v1, strict: true, deprecationErrors: true },
 });
+
+// Import routes
+const getRoutes = require("./routes/getRoutes");
+const postRoutes = require("./routes/postRoutes");
+const deleteRoutes = require("./routes/deleteRoutes");
+const patchRoutes = require("./routes/patchRoutes");
+const putRoutes = require("./routes/putRoutes");
 
 async function run() {
   try {
-    // Collections
-    const jobsCollection = client.db("FlyDriveGo").collection("jobs");
-    const applicationsCollection = client
-      .db("FlyDriveGo")
-      .collection("jobApplications");
-    const sellersCollection = client
-      .db("FlyDriveGo")
-      .collection("sellersCollection");
-    const visaApplicationsCollection = client
-      .db("FlyDriveGo")
-      .collection("visaApplications");
-    const allProductsCollection = client
-      .db("FlyDriveGo")
-      .collection("ProductsCollection");
-    const cartCollection = client.db("FlyDriveGo").collection("carts");
-    const userCollection = client.db("FlyDriveGo").collection("users");
-    const tourPackCollection = client
-      .db("FlyDriveGo")
-      .collection("TourPackage");
-    const trasportationCars = client
-      .db("FlyDriveGo")
-      .collection("TrasportationCars");
-    const transportationBusOptions = client
-      .db("FlyDriveGo")
-      .collection("transportationBusOptions");
-    const transportationBusTestimonials = client
-      .db("FlyDriveGo")
-      .collection("TransportationBusTestimonials");
-    const busesCollection = client.db("FlyDriveGo").collection("buses");
-    const busSeatsCollection = client.db("FlyDriveGo").collection("busSeats");
-    const busBookingsCollection = client
-      .db("FlyDriveGo")
-      .collection("busBookings");
-    const carBookingsCollection = client
-      .db("FlyDriveGo")
-      .collection("carBookings");
+    await client.connect();
+
+    // Database collections
+    const db = client.db("FlyDriveGo");
+    const jobsCollection = db.collection("jobs");
+    const applicationsCollection = db.collection("jobApplications");
+    const sellersCollection = db.collection("sellersCollection");
+    const visaApplicationsCollection = db.collection("visaApplications");
+    const allProductsCollection = db.collection("ProductsCollection");
+    const cartCollection = db.collection("carts");
+    const userCollection = db.collection("users");
+    const tourPackCollection = db.collection("TourPackage");
+    const trasportationCars = db.collection("TrasportationCars");
+    const transportationBusOptions = db.collection("transportationBusOptions");
+    const transportationBusTestimonials = db.collection("TransportationBusTestimonials");
+    const busesCollection = db.collection("buses");
+    const busSeatsCollection = db.collection("busSeats");
+    const busBookingsCollection = db.collection("busBookings");
+    const carBookingsCollection = db.collection("carBookings");
+    const purchasedProductCollection = db.collection("purchasedProducts");
 
     // New collections for flight booking
-    const flightsCollection = client.db("FlyDriveGo").collection("flights");
-    const flightSeatsCollection = client.db("FlyDriveGo").collection("flightSeats");
-    const flightBookingsCollection = client.db("FlyDriveGo").collection("flightBookings");
-    const flightTestimonialsCollection = client.db("FlyDriveGo").collection("flightTestimonials");
-    const airlinesCollection = client.db("FlyDriveGo").collection("airlines");
-    const flightFAQsCollection = client.db("FlyDriveGo").collection("flightFAQs");
+    const flightsCollection = db.collection("flights");
+    const flightSeatsCollection = db.collection("flightSeats");
+    const flightBookingsCollection = db.collection("flightBookings");
+    const flightTestimonialsCollection = db.collection("flightTestimonials");
+    const airlinesCollection = db.collection("airlines");
+    const flightFAQsCollection = db.collection("flightFAQs");
 
     // Helper functions
     function generateBookingReference() {
@@ -118,16 +93,14 @@ async function run() {
       const rows = Math.ceil(totalSeats / 4);
       const seats = [];
       const premiumSeats = [];
-      for (let i = 1; i <= 8; i++) {
-        premiumSeats.push(i);
-      }
-      for (let i = totalSeats - 3; i <= totalSeats; i++) {
-        premiumSeats.push(i);
-      }
+
+      for (let i = 1; i <= 8; i++) premiumSeats.push(i);
+      for (let i = totalSeats - 3; i <= totalSeats; i++) premiumSeats.push(i);
+
+      const columns = ["A", "B", "C", "D"];
       for (let i = 1; i <= totalSeats; i++) {
         const rowNumber = Math.ceil(i / 4);
         const colPosition = (i - 1) % 4;
-        const columns = ["A", "B", "C", "D"];
         const seatLetter = columns[colPosition];
         seats.push({
           seatNumber: i,
@@ -142,6 +115,7 @@ async function run() {
           },
         });
       }
+
       return {
         busId: bus._id || bus.id,
         busName: bus.name,
@@ -186,24 +160,21 @@ async function run() {
       const firstClassRows = Math.ceil(firstClassSeats / 4);
       for (let row = 1; row <= firstClassRows; row++) {
         for (let col = 0; col < 4; col++) {
-          // Skip middle seats in first class (2-2 configuration)
-          if (col === 1 || col === 2) {
-            const columns = ["A", "B", "E", "F"];
-            const seatLetter = columns[col];
-            seats.push({
-              seatNumber: seatNumber++,
-              seatLabel: `${row}${seatLetter}`,
-              status: "available",
-              type: "first",
-              price: flight.price * 2.5, // First class premium
-              position: {
-                row: row,
-                column: col + 1,
-                side: col < 2 ? "left" : "right",
-                section: "first"
-              },
-            });
-          }
+          const columns = ["A", "B", "E", "F"];
+          const seatLetter = columns[col];
+          seats.push({
+            seatNumber: seatNumber++,
+            seatLabel: `${row}${seatLetter}`,
+            status: "available",
+            type: "first",
+            price: flight.price * 2.5, // First class premium
+            position: {
+              row: row,
+              column: col + 1,
+              side: col < 2 ? "left" : "right",
+              section: "first"
+            },
+          });
         }
       }
 
@@ -265,7 +236,7 @@ async function run() {
       };
     }
 
-    // Pass collections and helper functions to routes
+    // Route Dependencies
     const routeDependencies = {
       jobsCollection,
       applicationsCollection,
@@ -282,7 +253,7 @@ async function run() {
       busSeatsCollection,
       busBookingsCollection,
       carBookingsCollection,
-      // Flight-related collections
+      purchasedProductCollection,
       flightsCollection,
       flightSeatsCollection,
       flightBookingsCollection,
@@ -300,27 +271,27 @@ async function run() {
       generateDefaultFlightSeatLayout,
     };
 
-    // Use routes
+    // Use Routes
     app.use(getRoutes(routeDependencies));
     app.use(postRoutes(routeDependencies));
     app.use(deleteRoutes(routeDependencies));
     app.use(patchRoutes(routeDependencies));
     app.use(putRoutes(routeDependencies));
 
-    console.log(
-      "Pinged your deployment. You successfully connected to MongoDB!"
-    );
-  } finally {
-    // Ensures that the client will close when you finish/error
-    //await client.close();
+    console.log("✅ Connected to MongoDB and routes initialized.");
+
+  } catch (err) {
+    console.error("❌ Error during server run:", err);
   }
 }
 run().catch(console.dir);
 
+// Root endpoint
 app.get("/", (req, res) => {
-  res.send("tour is waiting");
+  res.send("Tour is waiting");
 });
 
+// Start server
 app.listen(port, () => {
-  console.log(`plane is waiting at ${port}`);
+  console.log(`🚀 Plane is waiting at port ${port}`);
 });

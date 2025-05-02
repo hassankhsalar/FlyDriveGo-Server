@@ -50,6 +50,24 @@ module.exports = function ({
     res.send(result);
   });
 
+  router.delete("/clear-cart", async (req, res) => {
+    const { email } = req.body;
+
+    if (!email) {
+      return res.status(400).json({ message: "Email is required." });
+    }
+
+    try {
+      // Assuming you're storing the cart in a collection or session
+      await cartCollection.deleteMany({ email });
+
+      res.status(200).json({ success: true, message: "Cart cleared." });
+    } catch (error) {
+      console.error("Error clearing cart:", error);
+      res.status(500).json({ message: "Server error" });
+    }
+  });
+
   // Delete Product
   router.delete("/deleteProduct/:id", async (req, res) => {
     const id = req.params.id;
