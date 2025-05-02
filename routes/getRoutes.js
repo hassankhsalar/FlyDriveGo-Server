@@ -1,4 +1,5 @@
 const express = require("express");
+const { generateDefaultSeatLayout, generateDefaultFlightSeatLayout } = require("../utils/seatUtils");
 
 module.exports = function ({
   jobsCollection,
@@ -16,6 +17,12 @@ module.exports = function ({
   busSeatsCollection,
   busBookingsCollection,
   carBookingsCollection,
+  flightsCollection,
+  flightSeatsCollection,
+  flightBookingsCollection,
+  flightTestimonialsCollection,
+  airlinesCollection,
+  flightFAQsCollection,
   ObjectId,
 }) {
   const express = require("express");
@@ -383,6 +390,187 @@ module.exports = function ({
     } catch (error) {
       console.error("Error fetching car booking:", error);
       res.status(500).json({ error: "Failed to fetch booking details" });
+    }
+  });
+
+  // Get all flights with filter options
+  router.get("/flights", async (req, res) => {
+    try {
+      const { date, from, to, type, category, sort } = req.query;
+      const filter = {};
+
+      if (from) filter.departureLocation = { $regex: from, $options: "i" };
+      if (to) filter.arrivalLocation = { $regex: to, $options: "i" };
+      if (date) filter.availableDates = { $elemMatch: { $eq: date } };
+      if (type && type !== "all") filter.type = type;
+      if (category && category !== "all") filter.category = category;
+
+      let sortOption = {};
+      if (sort === "price-low") {
+        sortOption = { price: 1 };
+      } else if (sort === "price-high") {
+        sortOption = { price: -1 };
+      } else if (sort === "duration") {
+        sortOption = { durationMinutes: 1 };
+      } else if (sort === "departure") {
+        sortOption = { departureTime: 1 };
+      }
+
+      const flights = await flightsCollection
+        .find(filter)
+        .sort(sortOption)
+        .toArray();
+      res.status(200).json(flights);
+    } catch (error) {
+      console.error("Error fetching flights:", error);
+      res.status(500).json({ error: "Failed to fetch flights" });
+    }
+  });
+
+  // Get flight by ID
+  router.get("/flights/:id", async (req, res) => {
+    try {
+      const id = req.params.id;
+      let flight;
+
+      if (ObjectId.isValid(id)) {
+        flight = await flightsCollection.findOne({ _id: new ObjectId(id) });
+      }
+
+      if (!flight) {
+        flight = await flightsCollection.findOne({ id: parseInt(id) });
+      }
+
+      if (!flight) {
+        return res.status(404).json({ error: "Flight not found" });
+      }
+
+      res.status(200).json(flight);
+    } catch (error) {
+      console.error("Error fetching flight details:", error);
+      res.status(500).json({ error: "Failed to fetch flight details" });
+    }
+  });
+
+  // Get seat layout for a specific flight on a specific date
+  router.get("/flights/:id/seats", async (req, res) => {
+    try {
+      const flightId = req.params.id;
+      const { date } = req.query;
+
+      if (!date) {
+        return res.status(400).json({ error: "Date parameter is required" });
+      }
+
+      let flight;
+      if (ObjectId.isValid(flightId)) {
+        flight = await flightsCollection.findOne({ _id: new ObjectId(flightId) });
+      }
+
+      if (!flight) {
+        flight = await flightsCollection.findOne({ id: parseInt(flightId) });
+      }
+
+      if (!flight) {
+        return res.status(404).json({ error: "Flight not found" });
+      }
+
+      let query = {};
+      if (ObjectId.isValid(flightId)) {
+        query.flightId = new ObjectId(flightId);
+      } else {
+        query.flightId = parseInt(flightId);
+      }
+      query.date = date;
+
+      const seatLayout = await flightSeatsCollection.findOne(query);
+
+      if (seatLayout) {
+        return res.status(200).json(seatLayout);
+      }
+
+      const newSeatLayout = generateDefaultFlightSeatLayout(flight, date);
+
+      res.status(200).json(newSeatLayout);
+    } catch (error) {
+      console.error("Error fetching flight seat layout:", error);
+      res.status(500).json({ error: "Failed to fetch flight seat layout" });
+    }
+  });
+
+  // Get flight booking details
+  router.get("/flight-bookings/:id", async (req, res) => {
+    try {
+      const { id } = req.params;
+      const { reference, email } = req.query;
+
+      let booking;
+
+      if (id !== "find") {
+        if (ObjectId.isValid(id)) {
+          booking = await flightBookingsCollection.findOne({
+            _id: new ObjectId(id),
+          });
+        }
+      } else if (reference) {
+        booking = await flightBookingsCollection.findOne({
+          bookingReference: reference,
+        });
+
+        if (!booking && email) {
+          booking = await flightBookingsCollection.findOne({
+            bookingReference: reference,
+            "contactInfo.email": email,
+          });
+        }
+      } else {
+        return res.status(400).json({ error: "Invalid search parameters" });
+      }
+
+      if (!booking) {
+        return res.status(404).json({ error: "Booking not found" });
+      }
+
+      res.status(200).json(booking);
+    } catch (error) {
+      console.error("Error fetching flight booking:", error);
+      res.status(500).json({ error: "Failed to fetch booking details" });
+    }
+  });
+
+  // Get flight testimonials
+  router.get("/flight-testimonials", async (req, res) => {
+    try {
+      const query = {};
+      const result = await flightTestimonialsCollection.find(query).toArray();
+      res.json(result);
+    } catch (error) {
+      console.error("Error fetching flight testimonials:", error);
+      res.status(500).json({ error: "Internal Server Error" });
+    }
+  });
+
+  // Get airlines
+  router.get("/airlines", async (req, res) => {
+    try {
+      const query = {};
+      const result = await airlinesCollection.find(query).toArray();
+      res.json(result);
+    } catch (error) {
+      console.error("Error fetching airlines:", error);
+      res.status(500).json({ error: "Internal Server Error" });
+    }
+  });
+
+  // Get flight FAQs
+  router.get("/flight-faqs", async (req, res) => {
+    try {
+      const query = {};
+      const result = await flightFAQsCollection.find(query).toArray();
+      res.json(result);
+    } catch (error) {
+      console.error("Error fetching flight FAQs:", error);
+      res.status(500).json({ error: "Internal Server Error" });
     }
   });
 

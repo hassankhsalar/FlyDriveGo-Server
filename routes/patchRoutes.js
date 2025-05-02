@@ -8,6 +8,8 @@ module.exports = function ({
   busSeatsCollection,
   busBookingsCollection,
   carBookingsCollection,
+  flightBookingsCollection,
+  flightSeatsCollection,
   stripe,
   ObjectId,
 }) {
@@ -469,6 +471,178 @@ module.exports = function ({
       });
     } catch (error) {
       console.error("Error recovering car booking payment status:", error);
+      res
+        .status(500)
+        .json({ success: false, message: "Failed to recover payment status" });
+    }
+  });
+
+  // Update flight booking payment status
+  router.patch("/flight-bookings/:id/payment", async (req, res) => {
+    try {
+      const { id } = req.params;
+      const { paymentStatus, paymentId, paymentMethod, paymentTimestamp } =
+        req.body;
+
+      if (!ObjectId.isValid(id)) {
+        return res
+          .status(400)
+          .json({ success: false, message: "Invalid booking ID format" });
+      }
+
+      if (paymentId && stripe) {
+        try {
+          const paymentIntent = await stripe.paymentIntents.retrieve(paymentId);
+          if (paymentIntent.status !== "succeeded") {
+            return res.status(400).json({
+              success: false,
+              message: "Payment has not been completed successfully",
+            });
+          }
+        } catch (stripeError) {
+          console.error("Stripe verification error:", stripeError);
+        }
+      }
+
+      const result = await flightBookingsCollection.updateOne(
+        { _id: new ObjectId(id) },
+        {
+          $set: {
+            paymentStatus,
+            paymentId,
+            paymentMethod,
+            paymentTimestamp,
+            updatedAt: new Date(),
+          },
+        }
+      );
+
+      if (result.matchedCount === 0) {
+        return res
+          .status(404)
+          .json({ success: false, message: "Booking not found" });
+      }
+
+      const booking = await flightBookingsCollection.findOne({
+        _id: new ObjectId(id),
+      });
+      if (booking) {
+        let seatLayout = await flightSeatsCollection.findOne({
+          flightId: booking.flightId,
+          date: booking.date,
+        });
+
+        if (seatLayout) {
+          const updatedSeats = seatLayout.seats.map((seat) => {
+            if (booking.seatNumbers.includes(seat.seatNumber)) {
+              return {
+                ...seat,
+                status: "booked",
+                reservation: null,
+              };
+            }
+            return seat;
+          });
+
+          await flightSeatsCollection.updateOne(
+            { _id: seatLayout._id },
+            { $set: { seats: updatedSeats, updatedAt: new Date() } }
+          );
+        }
+      }
+
+      res.status(200).json({
+        success: true,
+        message: "Payment status updated successfully",
+      });
+    } catch (error) {
+      console.error("Error updating payment status:", error);
+      res
+        .status(500)
+        .json({ success: false, message: "Failed to update payment status" });
+    }
+  });
+
+  // Payment recovery endpoint for flight bookings
+  router.patch("/flight-bookings/:id/payment-recovery", async (req, res) => {
+    try {
+      const { id } = req.params;
+      const { paymentStatus, paymentId, paymentMethod, paymentTimestamp } =
+        req.body;
+
+      if (!ObjectId.isValid(id)) {
+        return res
+          .status(400)
+          .json({ success: false, message: "Invalid booking ID format" });
+      }
+
+      if (paymentId && stripe) {
+        try {
+          const paymentIntent = await stripe.paymentIntents.retrieve(paymentId);
+          if (paymentIntent.status !== "succeeded") {
+            return res.status(400).json({
+              success: false,
+              message: "Payment has not been completed successfully",
+            });
+          }
+        } catch (stripeError) {
+          console.error("Stripe verification error:", stripeError);
+        }
+      }
+
+      const result = await flightBookingsCollection.updateOne(
+        { _id: new ObjectId(id) },
+        {
+          $set: {
+            paymentStatus,
+            paymentId,
+            paymentMethod,
+            paymentTimestamp,
+            updatedAt: new Date(),
+          },
+        }
+      );
+
+      if (result.matchedCount === 0) {
+        return res
+          .status(404)
+          .json({ success: false, message: "Booking not found" });
+      }
+
+      const booking = await flightBookingsCollection.findOne({
+        _id: new ObjectId(id),
+      });
+      if (booking) {
+        let seatLayout = await flightSeatsCollection.findOne({
+          flightId: booking.flightId,
+          date: booking.date,
+        });
+
+        if (seatLayout) {
+          const updatedSeats = seatLayout.seats.map((seat) => {
+            if (booking.seatNumbers.includes(seat.seatNumber)) {
+              return {
+                ...seat,
+                status: "booked",
+                reservation: null,
+              };
+            }
+            return seat;
+          });
+
+          await flightSeatsCollection.updateOne(
+            { _id: seatLayout._id },
+            { $set: { seats: updatedSeats, updatedAt: new Date() } }
+          );
+        }
+      }
+
+      res.status(200).json({
+        success: true,
+        message: "Flight booking payment status recovered successfully",
+      });
+    } catch (error) {
+      console.error("Error recovering flight booking payment status:", error);
       res
         .status(500)
         .json({ success: false, message: "Failed to recover payment status" });
