@@ -980,23 +980,37 @@ module.exports = function ({
     const { email, products } = req.body;
 
     if (!email || !products) {
-        return res.status(400).json({ message: "Email and products are required." });
+      return res
+        .status(400)
+        .json({ message: "Email and products are required." });
     }
 
     try {
-        // Save the purchased products to the database
-        const result = await purchasedProductCollection.insertMany(products);
+      // Save the purchased products to the database
+      const result = await purchasedProductCollection.insertMany(products);
 
-        if (result.insertedCount > 0) {
-            res.status(200).json({ success: true, insertedCount: result.insertedCount });
-        } else {
-            res.status(400).json({ success: false, message: "Failed to save purchased products." });
-        }
+      if (result.insertedCount > 0) {
+        res
+          .status(200)
+          .json({ success: true, insertedCount: result.insertedCount });
+      } else {
+        res.status(400).json({
+          success: false,
+          message: "Failed to save purchased products.",
+        });
+      }
     } catch (error) {
-        console.error("Error saving purchased products:", error);
-        res.status(500).json({ message: "Server error" });
+      console.error("Error saving purchased products:", error);
+      res.status(500).json({ message: "Server error" });
     }
-});
+  });
+
+  // Tour Package api
+  router.post("/tourPackage", async (req, res) => {
+    const data = req.body;
+    const result = await tourPackCollection.insertOne(data);
+    res.send(result);
+  });
 
   return router;
 };

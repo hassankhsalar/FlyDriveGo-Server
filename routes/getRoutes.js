@@ -5,6 +5,7 @@ module.exports = function ({
   jobsCollection,
   applicationsCollection,
   sellersCollection,
+  tourPackCollection,
   visaApplicationsCollection,
   allProductsCollection,
   cartCollection,
@@ -605,6 +606,12 @@ module.exports = function ({
 
   router.get("/becomeseller", async (req, res) => {
     const result = await sellersCollection.find().toArray();
+    res.send(result);
+  });
+
+  // Tour Package Related api//
+  router.get("/tourPackage", async (req, res) => {
+    const result = await tourPackCollection.find({}).toArray();
     res.send(result);
   });
 

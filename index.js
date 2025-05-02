@@ -12,7 +12,9 @@ const { MongoClient, ServerApiVersion, ObjectId } = require("mongodb");
 app.use(
   cors({
     origin: [
-      "http://localhost:5000",
+
+      "http://localhost:3000",
+
       "http://localhost:5173",
       "https://flydrivego.netlify.app",
       "https://your-vercel-backend.vercel.app",
@@ -37,7 +39,11 @@ const upload = multer({ storage, limits: { fileSize: 5 * 1024 * 1024 } }); // 5M
 // MongoDB connection
 const uri = `mongodb+srv://${process.env.DB_USER}:${process.env.DB_PASS}@cluster0.c9iiq.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0`;
 const client = new MongoClient(uri, {
-  serverApi: { version: ServerApiVersion.v1, strict: true, deprecationErrors: true },
+  serverApi: {
+    version: ServerApiVersion.v1,
+    strict: true,
+    deprecationErrors: true,
+  },
 });
 
 // Import routes
@@ -63,7 +69,9 @@ async function run() {
     const tourPackCollection = db.collection("TourPackage");
     const trasportationCars = db.collection("TrasportationCars");
     const transportationBusOptions = db.collection("transportationBusOptions");
-    const transportationBusTestimonials = db.collection("TransportationBusTestimonials");
+    const transportationBusTestimonials = db.collection(
+      "TransportationBusTestimonials"
+    );
     const busesCollection = db.collection("buses");
     const busSeatsCollection = db.collection("busSeats");
     const busBookingsCollection = db.collection("busBookings");
@@ -279,7 +287,6 @@ async function run() {
     app.use(putRoutes(routeDependencies));
 
     console.log("✅ Connected to MongoDB and routes initialized.");
-
   } catch (err) {
     console.error("❌ Error during server run:", err);
   }
