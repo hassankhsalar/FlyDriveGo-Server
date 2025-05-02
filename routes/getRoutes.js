@@ -161,6 +161,36 @@ module.exports = function ({
     res.send(result);
   });
 
+  // Get product by ID
+  router.get("/products/:id", async (req, res) => {
+    try {
+      const id = req.params.id;
+
+      // Check if ID is a valid ObjectId and try to fetch
+      if (ObjectId.isValid(id)) {
+        const product = await allProductsCollection.findOne({ _id: new ObjectId(id) });
+        if (product) {
+          return res.status(200).json(product);
+        }
+      }
+
+      // Try to fetch by numeric ID as fallback
+      const numericId = parseInt(id);
+      if (!isNaN(numericId)) {
+        const product = await allProductsCollection.findOne({ id: numericId });
+        if (product) {
+          return res.status(200).json(product);
+        }
+      }
+
+      // If no product is found
+      return res.status(404).json({ error: "Product not found" });
+    } catch (error) {
+      console.error("Error fetching product details:", error);
+      res.status(500).json({ error: "Failed to fetch product details" });
+    }
+  });
+
   // Cart API
   router.get("/carts", async (req, res) => {
     const email = req.query.email;
