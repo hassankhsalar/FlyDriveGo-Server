@@ -9,9 +9,13 @@ module.exports = function ({
   cartCollection,
   userCollection,
   tourPackCollection,
+  busesCollection,
   busSeatsCollection,
   busBookingsCollection,
   carBookingsCollection,
+  flightsCollection, // Added flight collections
+  flightSeatsCollection, // Added flight collections
+  flightBookingsCollection, // Added flight collections
   cloudinary,
   purchasedProductCollection,
   upload,
@@ -20,6 +24,8 @@ module.exports = function ({
   generateBookingReference,
   generateDefaultSeatLayout,
   generateCarBookingReference,
+  generateFlightBookingReference, // Added this function
+  generateDefaultFlightSeatLayout, // Added this function
 }) {
   const express = require("express");
   const router = express.Router();
@@ -554,10 +560,338 @@ module.exports = function ({
 
       res.status(200).json({
         success: true,
-        message: `Cleaned up ${cleanupCount} expired seat reservations`,
       });
     } catch (error) {
       console.error("Error cleaning up reservations:", error);
+      res.status(500).json({ error: "Failed to clean up reservations" });
+    }
+  });
+
+  // Reserve flight seats temporarily
+  router.post("/flights/reserve-seats", async (req, res) => {
+    try {
+      const { flightId, date, seatNumbers, sessionId } = req.body;
+
+      console.log("Request to reserve seats:", { flightId, date, seatNumbers, sessionId });
+
+      if (
+        !flightId ||
+        !date ||
+        !seatNumbers ||
+        !Array.isArray(seatNumbers) ||
+        !sessionId
+      ) {
+        return res.status(400).json({ error: "Invalid request parameters" });
+      }
+
+      // Check if flightsCollection is defined
+      if (!flightsCollection) {
+        console.error("flightsCollection is not defined");
+        return res.status(500).json({ error: "Server configuration error" });
+      }
+
+      let flight;
+      try {
+        if (ObjectId.isValid(flightId)) {
+          flight = await flightsCollection.findOne({ _id: new ObjectId(flightId) });
+        } else {
+          flight = await flightsCollection.findOne({ id: parseInt(flightId) });
+        }
+      } catch (err) {
+        console.error("Error finding flight:", err);
+        return res.status(500).json({ error: "Database error while finding flight" });
+      }
+
+      if (!flight) {
+        console.log("Flight not found with ID:", flightId);
+        return res.status(404).json({ error: "Flight not found" });
+      }
+
+      let query = {};
+      if (ObjectId.isValid(flightId)) {
+        query.flightId = new ObjectId(flightId);
+      } else {
+        query.flightId = parseInt(flightId);
+      }
+      query.date = date;
+
+      // Check if flightSeatsCollection is defined
+      if (!flightSeatsCollection) {
+        console.error("flightSeatsCollection is not defined");
+        return res.status(500).json({ error: "Server configuration error" });
+      }
+
+      let seatLayout;
+      try {
+        seatLayout = await flightSeatsCollection.findOne(query);
+      } catch (err) {
+        console.error("Error finding seat layout:", err);
+        return res.status(500).json({ error: "Database error while finding seat layout" });
+      }
+
+      if (!seatLayout) {
+        console.log("No seat layout found, generating default layout");
+        if (typeof generateDefaultFlightSeatLayout !== 'function') {
+          console.error("generateDefaultFlightSeatLayout is not a function");
+          return res.status(500).json({ error: "Server configuration error" });
+        }
+        seatLayout = generateDefaultFlightSeatLayout(flight, date);
+      }
+
+      const unavailableSeats = [];
+      for (const seatNumber of seatNumbers) {
+        const seat = seatLayout.seats.find(
+          (s) => s.seatNumber === parseInt(seatNumber)
+        );
+        if (!seat) {
+          unavailableSeats.push(seatNumber);
+          continue;
+        }
+
+        if (seat.status === "booked") {
+          unavailableSeats.push(seatNumber);
+        } else if (
+          seat.status === "reserved" &&
+          seat.reservation?.sessionId !== sessionId
+        ) {
+          const expiryTime = new Date(seat.reservation.expiryTime);
+          if (expiryTime > new Date()) {
+            unavailableSeats.push(seatNumber);
+          }
+        }
+      }
+
+      if (unavailableSeats.length > 0) {
+        return res.status(400).json({
+          error: "Some seats are no longer available",
+          unavailableSeats,
+        });
+      }
+
+      const expiryTime = new Date();
+      expiryTime.setMinutes(expiryTime.getMinutes() + 10);
+
+      const updatedSeats = seatLayout.seats.map((seat) => {
+        if (seatNumbers.includes(seat.seatNumber.toString())) {
+          return {
+            ...seat,
+            status: "reserved",
+            reservation: {
+              sessionId,
+              expiryTime,
+            },
+          };
+        }
+        return seat;
+      });
+
+      if (seatLayout._id) {
+        try {
+          await flightSeatsCollection.updateOne(
+            { _id: new ObjectId(seatLayout._id) },
+            { $set: { seats: updatedSeats, updatedAt: new Date() } }
+          );
+        } catch (err) {
+          console.error("Error updating seat layout:", err);
+          return res.status(500).json({ error: "Database error while updating seats" });
+        }
+      } else {
+        seatLayout.seats = updatedSeats;
+        seatLayout.createdAt = new Date();
+        seatLayout.updatedAt = new Date();
+        try {
+          await flightSeatsCollection.insertOne(seatLayout);
+        } catch (err) {
+          console.error("Error inserting new seat layout:", err);
+          return res.status(500).json({ error: "Database error while creating seats" });
+        }
+      }
+
+      res.status(200).json({
+        success: true,
+        message: "Seats reserved successfully",
+        expiryTime,
+      });
+    } catch (error) {
+      console.error("Error reserving flight seats:", error);
+      res.status(500).json({ error: "Failed to reserve seats: " + error.message });
+    }
+  });
+
+  // Create flight booking
+  router.post("/flight-bookings", async (req, res) => {
+    try {
+      const {
+        flightId,
+        date,
+        seatNumbers,
+        sessionId,
+        contactInfo,
+        passengers,
+        totalPrice,
+      } = req.body;
+
+      if (
+        !flightId ||
+        !date ||
+        !seatNumbers ||
+        !contactInfo ||
+        !passengers ||
+        !totalPrice
+      ) {
+        return res
+          .status(400)
+          .json({ error: "Missing required booking information" });
+      }
+
+      let flight;
+      if (ObjectId.isValid(flightId)) {
+        flight = await flightsCollection.findOne({ _id: new ObjectId(flightId) });
+      } else {
+        flight = await flightsCollection.findOne({ id: parseInt(flightId) });
+      }
+
+      if (!flight) {
+        return res.status(404).json({ error: "Flight not found" });
+      }
+
+      let query = {};
+      if (ObjectId.isValid(flightId)) {
+        query.flightId = new ObjectId(flightId);
+      } else {
+        query.flightId = parseInt(flightId);
+      }
+      query.date = date;
+
+      const seatLayout = await flightSeatsCollection.findOne(query);
+
+      if (!seatLayout) {
+        return res
+          .status(400)
+          .json({ error: "No seat layout found for this flight and date" });
+      }
+
+      const unavailableSeats = [];
+      for (const seatNumber of seatNumbers) {
+        const seat = seatLayout.seats.find(
+          (s) => s.seatNumber === parseInt(seatNumber)
+        );
+        if (!seat) {
+          unavailableSeats.push(seatNumber);
+          continue;
+        }
+
+        if (seat.status === "booked") {
+          unavailableSeats.push(seatNumber);
+        } else if (
+          seat.status === "reserved" &&
+          seat.reservation?.sessionId !== sessionId
+        ) {
+          const expiryTime = new Date(seat.reservation.expiryTime);
+          if (expiryTime > new Date()) {
+            unavailableSeats.push(seatNumber);
+          }
+        }
+      }
+
+      if (unavailableSeats.length > 0) {
+        return res.status(400).json({
+          error: "Some seats are no longer available",
+          unavailableSeats,
+        });
+      }
+
+      const bookingReference = generateFlightBookingReference();
+
+      const bookingData = {
+        bookingReference,
+        flightId: ObjectId.isValid(flightId) ? new ObjectId(flightId) : parseInt(flightId),
+        flightDetails: {
+          name: flight.name,
+          route: flight.route,
+          departureTime: flight.departureTime,
+          arrivalTime: flight.arrivalTime,
+          airline: flight.airline,
+          type: flight.type
+        },
+        date,
+        seatNumbers: seatNumbers.map((s) => parseInt(s)),
+        contactInfo,
+        passengers,
+        totalPrice,
+        status: "confirmed",
+        paymentStatus: "pending",
+        createdAt: new Date(),
+      };
+
+      const result = await flightBookingsCollection.insertOne(bookingData);
+
+      const updatedSeats = seatLayout.seats.map((seat) => {
+        if (seatNumbers.includes(seat.seatNumber.toString())) {
+          return {
+            ...seat,
+            status: "booked",
+            bookingId: result.insertedId,
+            reservation: null,
+          };
+        }
+        return seat;
+      });
+
+      await flightSeatsCollection.updateOne(
+        { _id: seatLayout._id },
+        { $set: { seats: updatedSeats, updatedAt: new Date() } }
+      );
+
+      res.status(201).json({
+        success: true,
+        bookingId: result.insertedId,
+        bookingReference,
+        message: "Flight booking created successfully",
+      });
+    } catch (error) {
+      console.error("Error creating flight booking:", error);
+      res.status(500).json({ error: "Failed to create booking" });
+    }
+  });
+
+  // Clean up expired flight seat reservations
+  router.post("/flights/cleanup-reservations", async (req, res) => {
+    try {
+      const now = new Date();
+
+      const seatLayouts = await flightSeatsCollection.find({}).toArray();
+      let cleanupCount = 0;
+
+      for (const layout of seatLayouts) {
+        const updatedSeats = layout.seats.map((seat) => {
+          if (
+            seat.status === "reserved" &&
+            new Date(seat.reservation.expiryTime) < now
+          ) {
+            cleanupCount++;
+            return {
+              ...seat,
+              status: "available",
+              reservation: null,
+            };
+          }
+          return seat;
+        });
+
+        if (cleanupCount > 0) {
+          await flightSeatsCollection.updateOne(
+            { _id: layout._id },
+            { $set: { seats: updatedSeats, updatedAt: new Date() } }
+          );
+        }
+      }
+
+      res.status(200).json({
+        success: true,
+      });
+    } catch (error) {
+      console.error("Error cleaning up flight reservations:", error);
       res.status(500).json({ error: "Failed to clean up reservations" });
     }
   });
