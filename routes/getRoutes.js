@@ -23,6 +23,7 @@ module.exports = function ({
   flightTestimonialsCollection,
   airlinesCollection,
   flightFAQsCollection,
+  purchasedProductCollection,
   ObjectId,
 }) {
   const express = require("express");
@@ -613,6 +614,61 @@ module.exports = function ({
   router.get("/tourPackage", async (req, res) => {
     const result = await tourPackCollection.find({}).toArray();
     res.send(result);
+  });
+
+  // Get user statistics by email
+  router.get("/user-stats/:email", async (req, res) => {
+    try {
+      const { email } = req.params;
+
+      if (!email) {
+        return res.status(400).json({ error: "Email is required" });
+      }
+
+      // Get flight bookings count
+      const flightBookings = await flightBookingsCollection.countDocuments({
+        "contactInfo.email": email,
+        status: { $ne: "cancelled" }
+      });
+
+      // Get bus bookings count
+      const busBookings = await busBookingsCollection.countDocuments({
+        "contactInfo.email": email,
+        status: { $ne: "cancelled" }
+      });
+
+      // Get car bookings count
+      const carBookings = await carBookingsCollection.countDocuments({
+        "contactInfo.email": email,
+        status: { $ne: "cancelled" }
+      });
+
+      // Get product orders count (from e-shop)
+      const productOrders = await purchasedProductCollection.countDocuments({
+        email: email
+      });
+
+      // Get tour bookings count (assuming there's a tourBookingsCollection)
+      // If not implemented yet, we'll leave at 0
+      const tourBookings = 0;
+
+      // Get visa applications count
+      const visaApplications = await visaApplicationsCollection.countDocuments({
+        email: email
+      });
+
+      res.status(200).json({
+        flights: flightBookings,
+        buses: busBookings,
+        cars: carBookings,
+        orders: productOrders,
+        tours: tourBookings,
+        visas: visaApplications
+      });
+    } catch (error) {
+      console.error("Error fetching user stats:", error);
+      res.status(500).json({ error: "Failed to fetch user statistics" });
+    }
   });
 
   return router;
